@@ -1,0 +1,55 @@
+package com.solosu.logcat.log
+
+/** logcat 日志级别,order 用于“最小级别”过滤。 */
+enum class LogLevel(val letter: Char, val label: String, val order: Int) {
+    VERBOSE('V', "Verbose", 0),
+    DEBUG('D', "Debug", 1),
+    INFO('I', "Info", 2),
+    WARN('W', "Warn", 3),
+    ERROR('E', "Error", 4),
+    FATAL('F', "Fatal", 5),
+    ASSERT('A', "Assert", 5);
+
+    companion object {
+        fun fromLetter(letter: Char): LogLevel = entries.firstOrNull { it.letter == letter } ?: VERBOSE
+    }
+}
+
+/** logcat 缓冲区。ALL 会同时读取 main/system/crash 等。 */
+enum class LogBuffer(val id: String, val label: String) {
+    ALL("all", "全部"),
+    MAIN("main", "main"),
+    SYSTEM("system", "system"),
+    CRASH("crash", "crash");
+
+    companion object {
+        fun fromId(id: String?): LogBuffer = entries.firstOrNull { it.id == id } ?: ALL
+    }
+}
+
+/**
+ * 一条已解析的日志。[seq] 是单调递增序号,作为 LazyColumn 稳定 key。
+ * [overflow] 表示单条日志过长被截断。
+ */
+data class LogEntry(
+    val seq: Long,
+    val date: String,
+    val time: String,
+    val pid: Int,
+    val tid: Int,
+    val level: LogLevel,
+    val tag: String,
+    val message: String,
+    val overflow: Boolean = false,
+) {
+    val clock: String get() = "$date $time"
+
+    val searchText: String by lazy { "$tag $message".lowercase() }
+}
+
+/** 还原为接近 logcat -v threadtime 的单行文本,便于复制/导出。 */
+fun LogEntry.rawLine(): String = buildString {
+    append(date).append(' ').append(time)
+    append(' ').append(pid.toString().padStart(5)).append(' ').append(tid.toString().padStart(5))
+    append(' ').append(level.letter).append(' ').append(tag).append(": ").append(message)
+}
