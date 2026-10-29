@@ -22,16 +22,27 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # 不使用 android-actions/setup-android:其内部执行 `sdkmanager tools`,
+      # 新版 cmdline-tools 已移除该包会直接失败。runner 镜像自带 SDK,
+      # 这里只补授权,缺失的 platform/build-tools 由 AGP 自动下载。
+      - name: Prepare Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME" -maxdepth 3 -type f -name sdkmanager 2>/dev/null | head -1)"
+          echo "sdkmanager=$SDKMANAGER"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          fi
+          echo "$ANDROID_HOME" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -52,16 +63,13 @@ jobs:
               echo "SIGNING_KEY_ALIAS=$KEY_ALIAS"
               echo "SIGNING_KEY_PASSWORD=$KEY_PASSWORD"
             } >> "$GITHUB_ENV"
-            echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "使用仓库 Secrets 中的 release 签名配置"
           else
-            echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "未配置签名 Secrets,release 将回退 debug 签名"
           fi
 
       - name: Build debug + release
-        run: |
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
 
       - name: Collect artifacts
         run: |
@@ -70,7 +78,7 @@ jobs:
           ls -l out
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: logcat-apks
           path: out/*.apk
@@ -79,7 +87,7 @@ jobs:
 
       - name: Upload build reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-reports
           path: |
