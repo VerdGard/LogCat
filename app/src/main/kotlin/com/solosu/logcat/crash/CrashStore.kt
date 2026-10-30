@@ -129,7 +129,7 @@ class CrashStore(private val context: Context) {
         fun now(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
         /** 从 logcat 的 FATAL EXCEPTION 段落构造记录。 */
-        fun fromSystemLog(time: String, tag: String, message: String): CrashRecord {
+        fun newSystemRecord(time: String, tag: String, message: String): CrashRecord {
             val exception = message.lineSequence().firstOrNull { it.contains("Exception") || it.contains("Error") }
                 ?: message.lineSequence().firstOrNull()
                 ?: "未知异常"

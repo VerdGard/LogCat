@@ -114,7 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (downgraded) {
             _message.value = "${mode.label} 当前不可用(${unavailableReason(mode)}),已回退到默认模式"
         }
-        update({ it.copy(mode = effective) }, restart = true)
+        update(restart = true) { it.copy(mode = effective) }
     }
 
     fun requestShizukuPermission() {
@@ -219,7 +219,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    private fun update(transform: (AppSettings) -> AppSettings, restart: Boolean = false) {
+    private fun update(restart: Boolean = false, transform: (AppSettings) -> AppSettings) {
         val previous = _settings.value
         val next = transform(previous)
         if (next == previous) return

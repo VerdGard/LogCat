@@ -5,13 +5,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import com.solosu.logcat.crash.CrashRecord
 import com.solosu.logcat.crash.CrashStore
 import com.solosu.logcat.log.LogBuffer
 import com.solosu.logcat.log.LogEntry
 import com.solosu.logcat.log.LogLevel
 import com.solosu.logcat.log.LogSource
+import com.solosu.logcat.log.rawLine
 import com.solosu.logcat.shell.ShellMode
+import com.solosu.logcat.shell.Shells
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -147,7 +148,7 @@ class LogRepository(
     private fun detectCrash(entry: LogEntry) {
         val isFatal = entry.level == LogLevel.FATAL || entry.message.contains("FATAL EXCEPTION")
         if (!isFatal) return
-        val record = CrashRecord.fromSystemLog(
+        val record = CrashStore.newSystemRecord(
             time = entry.clock,
             tag = entry.tag.ifBlank { "system" },
             message = entry.message,
