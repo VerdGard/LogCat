@@ -74,11 +74,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- 日志采集 ----------
 
     fun startLogging() {
+        pausedByUser = false
         logRepository.start(resolveTargetMode(), settings.value.buffer)
     }
 
+    /**
+     * 用户是否主动暂停了采集。
+     *
+     * 之前 onResume() 只看 logRepository.running,用户在日志页按了暂停之后
+     * 切到后台再回来会被强制恢复采集,暂停形同虚设。这里记住「是用户按的暂停」,
+     * 回到前台时尊重这个意图;只有流因异常中断(非用户操作)才自动重启。
+     */
+    private var pausedByUser = false
+
     fun toggleLogging() {
-        if (logRepository.running) logRepository.stop() else startLogging()
+        if (logRepository.running) {
+            pausedByUser = true
+            logRepository.stop()
+        } else {
+            pausedByUser = false
+            startLogging()
+        }
     }
 
     fun clearLogBuffer(clearSystem: Boolean) {
@@ -119,6 +135,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLevel(level: LogLevel) = update { it.copy(level = level) }
 
     fun setKeyword(keyword: String) = update { it.copy(keyword = keyword) }
+
+    fun setCompactRows(compact: Boolean) = update { it.copy(compactRows = compact) }
 
     fun setWrapLines(wrap: Boolean) = update { it.copy(wrapLines = wrap) }
 
@@ -246,9 +264,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- 崩溃 ----------
 
-    fun removeCrash(id: String) = crashStore.remove(id)
+    fun removeCrash(id: String) {
+        crashStore.remove(id).onFailure { throwable ->
+            postMessage("删除崩溃记录失败:${throwable.readable()}")
+        }
+    }
 
-    fun clearCrashes() = crashStore.clear()
+    fun clearCrashes() {
+        crashStore.clear().onFailure { throwable ->
+            postMessage("清空崩溃记录失败:${throwable.readable()}")
+        }
+    }
 
     fun exportCrashes(onReady: (String) -> Unit, record: CrashRecord?) {
         viewModelScope.launch {
@@ -275,7 +301,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- 生命周期 ----------
 
     fun onResume() {
-        if (!logRepository.running) startLogging()
+        // 用户主动暂停的不自动恢复;其余情况(流异常中断、进程刚起)自动拉起
+        if (!logRepository.running && !pausedByUser) startLogging()
     }
 
     override fun onCleared() {

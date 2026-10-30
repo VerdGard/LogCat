@@ -28,6 +28,8 @@ data class AppSettings(
     val buffer: LogBuffer = LogBuffer.ALL,
     val maxLines: Int = 3000,
     // 显示
+    /** 紧凑行高:true 时每条日志默认单行、点击展开;false 为两行式舒适布局。 */
+    val compactRows: Boolean = true,
     val level: LogLevel = LogLevel.VERBOSE,
     val keyword: String = "",
     val wrapLines: Boolean = true,
@@ -54,6 +56,7 @@ class SettingsRepository(context: Context) {
         mode = ShellMode.fromId(prefs.getString(KEY_MODE, null)),
         buffer = LogBuffer.fromId(prefs.getString(KEY_BUFFER, null)),
         maxLines = prefs.getInt(KEY_MAX_LINES, 3000).coerceIn(MIN_LINES, MAX_LINES),
+        compactRows = prefs.getBoolean(KEY_COMPACT, true),
         level = LogLevel.entries.firstOrNull { it.letter.toString() == prefs.getString(KEY_LEVEL, null) }
             ?: LogLevel.VERBOSE,
         keyword = prefs.getString(KEY_KEYWORD, "").orEmpty(),
@@ -76,6 +79,7 @@ class SettingsRepository(context: Context) {
             .putString(KEY_MODE, settings.mode.id)
             .putString(KEY_BUFFER, settings.buffer.id)
             .putInt(KEY_MAX_LINES, settings.maxLines)
+            .putBoolean(KEY_COMPACT, settings.compactRows)
             .putString(KEY_LEVEL, settings.level.letter.toString())
             .putString(KEY_KEYWORD, settings.keyword)
             .putBoolean(KEY_WRAP, settings.wrapLines)
@@ -106,6 +110,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_MODE = "mode"
         private const val KEY_BUFFER = "buffer"
         private const val KEY_MAX_LINES = "max_lines"
+        private const val KEY_COMPACT = "compact_rows"
         private const val KEY_LEVEL = "level"
         private const val KEY_KEYWORD = "keyword"
         private const val KEY_WRAP = "wrap"

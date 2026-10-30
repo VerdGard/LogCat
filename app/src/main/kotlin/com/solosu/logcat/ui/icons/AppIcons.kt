@@ -81,13 +81,6 @@ object AppIcons {
         }
     }
 
-    val Share: ImageVector by lazy {
-        stroke("Share") {
-            moveTo(12f, 15f); lineTo(12f, 3.5f)
-            moveTo(7.5f, 8f); lineTo(12f, 3.5f); lineTo(16.5f, 8f)
-            moveTo(4.5f, 13f); lineTo(4.5f, 20.5f); lineTo(19.5f, 20.5f); lineTo(19.5f, 13f)
-        }
-    }
 
     val Delete: ImageVector by lazy {
         stroke("Delete") {
@@ -99,17 +92,6 @@ object AppIcons {
         }
     }
 
-    val Refresh: ImageVector by lazy {
-        stroke("Refresh") {
-            // 环形箭头:八边形截断 + 箭头
-            moveTo(19.5f, 12f)
-            lineTo(17.5f, 7.2f); lineTo(12.8f, 4.6f); lineTo(7.6f, 5.4f)
-            lineTo(4.2f, 8.8f); lineTo(3.6f, 13.4f); lineTo(6.2f, 17.4f)
-            lineTo(10.6f, 19.4f); lineTo(15.2f, 18.4f)
-            moveTo(19.5f, 12f); lineTo(19.8f, 6.6f)
-            moveTo(19.5f, 12f); lineTo(14.4f, 12.6f)
-        }
-    }
 
     val Export: ImageVector by lazy {
         stroke("Export") {
@@ -127,12 +109,6 @@ object AppIcons {
         stroke("ArrowBack") { moveTo(15f, 5f); lineTo(8f, 12f); lineTo(15f, 19f) }
     }
 
-    val Folder: ImageVector by lazy {
-        stroke("Folder") {
-            moveTo(3f, 6f); lineTo(10f, 6f); lineTo(12f, 8.5f); lineTo(21f, 8.5f)
-            lineTo(21f, 19.5f); lineTo(3f, 19.5f); close()
-        }
-    }
 
     val Info: ImageVector by lazy {
         stroke("Info") {
@@ -159,12 +135,13 @@ object AppIcons {
         }
     }
 
-    val Wrap: ImageVector by lazy {
-        stroke("Wrap") {
-            moveTo(3f, 6f); lineTo(21f, 6f)
-            moveTo(3f, 12f); lineTo(15f, 12f); lineTo(18f, 12f)
-            moveTo(18f, 12f); lineTo(18f, 16f); lineTo(15f, 16f)
-            moveTo(3f, 18f); lineTo(12f, 18f)
+
+    /** 三点更多菜单。用小方块代表圆点,避免依赖弧线 API。 */
+    val More: ImageVector by lazy {
+        solid("More") {
+            moveTo(4f, 10f); lineTo(6.5f, 10f); lineTo(6.5f, 14f); lineTo(4f, 14f); close()
+            moveTo(10.75f, 10f); lineTo(13.25f, 10f); lineTo(13.25f, 14f); lineTo(10.75f, 14f); close()
+            moveTo(17.5f, 10f); lineTo(20f, 10f); lineTo(20f, 14f); lineTo(17.5f, 14f); close()
         }
     }
 
@@ -181,12 +158,6 @@ object AppIcons {
         }
     }
 
-    val Expand: ImageVector by lazy {
-        stroke("Expand") {
-            moveTo(4f, 9f); lineTo(12f, 3f); lineTo(20f, 9f)
-            moveTo(4f, 15f); lineTo(12f, 21f); lineTo(20f, 15f)
-        }
-    }
 
     private fun stroke(name: String, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(

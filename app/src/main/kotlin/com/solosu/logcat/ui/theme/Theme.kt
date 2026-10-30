@@ -77,17 +77,22 @@ private fun AppPalette.lightScheme(): ColorScheme = lightColorScheme(
     onPrimaryContainer = seed.blendWithDark(0.62f),
     secondary = seed.shiftHue(-18f).desaturate(0.25f),
     tertiary = seed.shiftHue(28f),
-    background = seed.blendWithLight(0.965f),
+    // 明度阶梯:background(最浅) > surfaceContainerLow > surfaceContainer
+    // > surfaceContainerHigh。原先把 background 与 surfaceContainer 只差 0.025,
+    // 卡片边界在浅色下几乎看不见,这里拉开到约 0.055。
+    background = seed.blendWithLight(0.972f),
     onBackground = Color(0xFF1A1C1B),
-    surface = seed.blendWithLight(0.975f),
+    surface = seed.blendWithLight(0.978f),
     onSurface = Color(0xFF1A1C1B),
-    surfaceVariant = seed.blendWithLight(0.885f),
+    surfaceVariant = seed.blendWithLight(0.88f),
     onSurfaceVariant = Color(0xFF424844),
-    outline = seed.blendWithLight(0.62f),
-    outlineVariant = seed.blendWithLight(0.82f),
-    surfaceContainer = seed.blendWithLight(0.94f),
-    surfaceContainerHigh = seed.blendWithLight(0.905f),
-    surfaceContainerLow = seed.blendWithLight(0.955f),
+    outline = seed.blendWithLight(0.58f),
+    outlineVariant = seed.blendWithLight(0.78f),
+    surfaceContainerLowest = seed.blendWithLight(1f),
+    surfaceContainerLow = seed.blendWithLight(0.948f),
+    surfaceContainer = seed.blendWithLight(0.917f),
+    surfaceContainerHigh = seed.blendWithLight(0.878f),
+    surfaceContainerHighest = seed.blendWithLight(0.838f),
 )
 
 private fun AppPalette.darkScheme(): ColorScheme = darkColorScheme(
@@ -97,17 +102,20 @@ private fun AppPalette.darkScheme(): ColorScheme = darkColorScheme(
     onPrimaryContainer = seed.blendWithLight(0.82f),
     secondary = seed.shiftHue(-18f).desaturate(0.3f).blendWithLight(0.6f),
     tertiary = seed.shiftHue(28f).blendWithLight(0.62f),
-    background = seed.blendWithDark(0.9f),
+    // 深色下容器要比背景「亮」才能形成层级(混黑比例越小越亮)
+    background = seed.blendWithDark(0.92f),
     onBackground = Color(0xFFE2E3E0),
-    surface = seed.blendWithDark(0.9f),
+    surface = seed.blendWithDark(0.92f),
     onSurface = Color(0xFFE2E3E0),
-    surfaceVariant = seed.blendWithDark(0.74f),
+    surfaceVariant = seed.blendWithDark(0.72f),
     onSurfaceVariant = Color(0xFFC0C8C3),
-    outline = seed.blendWithLight(0.42f),
-    outlineVariant = seed.blendWithDark(0.66f),
+    outline = seed.blendWithLight(0.44f),
+    outlineVariant = seed.blendWithDark(0.62f),
+    surfaceContainerLowest = seed.blendWithDark(0.95f),
+    surfaceContainerLow = seed.blendWithDark(0.88f),
     surfaceContainer = seed.blendWithDark(0.84f),
     surfaceContainerHigh = seed.blendWithDark(0.78f),
-    surfaceContainerLow = seed.blendWithDark(0.87f),
+    surfaceContainerHighest = seed.blendWithDark(0.72f),
 )
 
 // 极简 HSL 变换,避免为调色引入外部依赖

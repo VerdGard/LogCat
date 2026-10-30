@@ -1,20 +1,14 @@
 package com.solosu.logcat.ui.components
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,99 +19,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.solosu.logcat.log.LogLevel
-import com.solosu.logcat.ui.icons.AppIcons
-import com.solosu.logcat.ui.theme.LogColors
 
-/**
- * 可折叠设置分区:点击标题栏展开/收起。
- * 使用 animateContentSize + 旋转箭头,避免引入 AnimatedVisibility 的额外展开延迟。
- */
-@Composable
-fun SectionCard(
-    title: String,
-    subtitle: String? = null,
-    icon: ImageVector? = null,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-    trailing: @Composable (() -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 90f else 0f,
-        label = "section-arrow",
-    )
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .animateContentSize(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (icon != null) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            trailing?.invoke()
-            Icon(
-                AppIcons.ChevronRight,
-                contentDescription = if (expanded) "收起" else "展开",
-                modifier = Modifier.size(16.dp).rotate(rotation),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (expanded) {
-            Column(modifier = Modifier.padding(bottom = 8.dp), content = content)
-        }
-    }
-}
 
 /** 分区内的普通设置行。 */
 @Composable
@@ -150,7 +60,14 @@ fun SettingRow(
     }
 }
 
-/** 开关行。 */
+/**
+ * 开关行。
+ *
+ * 坑:如果外层 Row 是可点击的、内部 Switch 也有 onCheckedChange,点开关本体时
+ * 会被处理两次(一次来自 Switch,一次冒泡到 Row),结果 toggle 后又恢复原状。
+ * 这里把 Switch 的 onCheckedChange 设为 null(让 Switch 只显示状态不处理点击),
+ * 点击统一由整行承担——同时满足「点整行或点开关都能切换」且只切换一次。
+ */
 @Composable
 fun SwitchRow(
     title: String,
@@ -159,46 +76,40 @@ fun SwitchRow(
     supporting: String? = null,
     enabled: Boolean = true,
 ) {
-    SettingRow(
-        title = title,
-        supporting = supporting,
-        onClick = { if (enabled) onCheckedChange(!checked) },
-        trailing = { Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled) },
-    )
-}
-
-/** 段落小标题。 */
-@Composable
-fun GroupLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-    )
-}
-
-/** 级别徽章:单字母 + 语义色背景。 */
-@Composable
-fun LevelBadge(level: LogLevel, size: Int = 16) {
-    val color = LogColors.of(level)
-    Box(
+    Row(
         modifier = Modifier
-            .size(size.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.16f)),
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .then(
+                if (enabled) Modifier.clickable { onCheckedChange(!checked) }
+                else Modifier
+            )
+            .semantics {
+                role = Role.Switch
+                if (supporting != null) stateDescription = supporting
+            }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = level.letter.toString(),
-            color = color,
-            fontSize = (size * 0.68f).sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            if (supporting != null) {
+                Text(
+                    text = supporting,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
         )
     }
 }
+
+
 
 /** 空状态:图标 + 主文案 + 补充说明。 */
 @Composable
@@ -254,18 +165,3 @@ fun Tag(text: String, color: Color = MaterialTheme.colorScheme.primary) {
     }
 }
 
-/** 带竖线的日志消息容器,用于区分消息与元信息。 */
-@Composable
-fun Indent(level: LogLevel, content: @Composable () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .padding(start = 4.dp)
-                .width(2.dp)
-                .height(14.dp)
-                .background(LogColors.of(level).copy(alpha = 0.45f)),
-        )
-        Spacer(Modifier.width(8.dp))
-        content()
-    }
-}
