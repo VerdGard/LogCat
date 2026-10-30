@@ -216,7 +216,8 @@ class McpTools(private val app: LogCatApplication) {
         val command = com.solosu.logcat.log.LogcatCommand.dump(buffer, lines, level)
         val text = runCatching { Shells.execOnce(mode, command) }.getOrElse { "" }
         val json = JSONArray()
-        text.lineSequence().filter { it.isNotBlank() }.takeLast(lines).forEach { json.put(it) }
+        // Sequence 没有 takeLast,先收集成 List 再取末尾
+        text.lineSequence().filter { it.isNotBlank() }.toList().takeLast(lines).forEach { json.put(it) }
         textContent(
             JSONObject()
                 .put("mode", mode.id)

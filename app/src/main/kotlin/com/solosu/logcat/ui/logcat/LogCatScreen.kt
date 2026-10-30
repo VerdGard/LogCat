@@ -268,22 +268,15 @@ fun LogCatScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     }
 
                     // 未贴底时提供回到底部的浮动按钮
-                    AnimatedVisibility(
+                    // 注意:这里位于 Box 作用域,直接写 AnimatedVisibility 会被解析为外层
+                    // ColumnScope 的扩展而编译失败,因此抽成独立 composable。
+                    BackToBottomButton(
                         visible = !atBottom,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
+                        onClick = {
+                            scrollScope.launch { listState.animateScrollToItem(visibleEntries.lastIndex) }
+                        },
                         modifier = Modifier.align(Alignment.BottomEnd),
-                    ) {
-                        FilledTonalButton(
-                            onClick = { scrollScope.launch { listState.animateScrollToItem(visibleEntries.lastIndex) } },
-                            modifier = Modifier.padding(16.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        ) {
-                            Icon(AppIcons.ArrowDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("最新", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
+                    )
 
                     if (running) {
                         CircularProgressIndicator(
@@ -513,6 +506,26 @@ private fun highlight(text: String, keyword: String, color: Color): AnnotatedStr
                 append(text.substring(index, index + target.length))
             }
             cursor = index + target.length
+        }
+    }
+}
+
+/** 回到底部浮动按钮。独立成函数以避免掉进外层 ColumnScope 的隐式接收者。 */
+@Composable
+private fun BackToBottomButton(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        FilledTonalButton(
+            onClick = onClick,
+            modifier = Modifier.padding(16.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Icon(AppIcons.ArrowDown, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("最新", style = MaterialTheme.typography.labelMedium)
         }
     }
 }
