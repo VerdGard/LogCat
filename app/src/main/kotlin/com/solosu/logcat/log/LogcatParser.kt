@@ -21,7 +21,7 @@ class LogcatParser(private val maxMessageLength: Int = 20_000) {
         // logcat 在切换缓冲区时会输出 "--------- beginning of main/system/crash"。
         // 这类分隔行既不是日志头也不是续行,必须丢弃;否则会被并进上一条日志的
         // message 里,污染导出内容与崩溃堆栈。
-        if (line.startsWith(BUFFER_SEPARATOR)) return
+        if (line.startsWith(LOGCAT_BUFFER_SEPARATOR)) return
 
         val match = pattern.matchEntire(line)
         if (match != null) {
@@ -70,6 +70,5 @@ class LogcatParser(private val maxMessageLength: Int = 20_000) {
 
     private companion object {
         const val MAX_CONTINUATION_LINES = 400
-        const val BUFFER_SEPARATOR = "--------- beginning of"
     }
 }

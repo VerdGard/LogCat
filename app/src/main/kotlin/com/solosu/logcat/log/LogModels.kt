@@ -1,5 +1,11 @@
 package com.solosu.logcat.log
 
+/**
+ * logcat 在切换缓冲区时输出的分隔行前缀,例如 "--------- beginning of main"。
+ * 这类行既不是日志头也不能算续行,解析与原始文本导出都必须剔除。
+ */
+const val LOGCAT_BUFFER_SEPARATOR = "--------- beginning of"
+
 /** logcat 日志级别,order 用于“最小级别”过滤。 */
 enum class LogLevel(val letter: Char, val label: String, val order: Int) {
     VERBOSE('V', "Verbose", 0),

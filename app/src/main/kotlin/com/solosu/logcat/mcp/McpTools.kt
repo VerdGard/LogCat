@@ -3,6 +3,7 @@ package com.solosu.logcat.mcp
 import com.solosu.logcat.LogCatApplication
 import com.solosu.logcat.data.AppSettings
 import com.solosu.logcat.log.LogBuffer
+import com.solosu.logcat.log.LOGCAT_BUFFER_SEPARATOR
 import com.solosu.logcat.log.LogEntry
 import com.solosu.logcat.log.LogLevel
 import com.solosu.logcat.log.rawLine
@@ -216,8 +217,14 @@ class McpTools(private val app: LogCatApplication) {
         val command = com.solosu.logcat.log.LogcatCommand.dump(buffer, lines, level)
         val text = runCatching { Shells.execOnce(mode, command) }.getOrElse { "" }
         val json = JSONArray()
-        // Sequence 没有 takeLast,先收集成 List 再取末尾
-        text.lineSequence().filter { it.isNotBlank() }.toList().takeLast(lines).forEach { json.put(it) }
+        // Sequence 没有 takeLast,先收集成 List 再取末尾。
+        // 必须剔除 "--------- beginning of xxx" 缓冲区分隔行:这里直接处理原始文本、
+        // 不经过 LogcatParser,否则分隔行会原样出现在结果里。
+        text.lineSequence()
+            .filter { it.isNotBlank() && !it.startsWith(LOGCAT_BUFFER_SEPARATOR) }
+            .toList()
+            .takeLast(lines)
+            .forEach { json.put(it) }
         textContent(
             JSONObject()
                 .put("mode", mode.id)
