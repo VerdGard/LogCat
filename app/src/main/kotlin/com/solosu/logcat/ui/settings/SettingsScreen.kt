@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.solosu.logcat.data.SettingsRepository
 import com.solosu.logcat.data.ThemeMode
@@ -67,6 +66,7 @@ import com.solosu.logcat.ui.components.Tag
 import com.solosu.logcat.ui.components.rememberTextClipboard
 import com.solosu.logcat.ui.icons.AppIcons
 import com.solosu.logcat.ui.theme.AppPalette
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.lazy.rememberLazyListState
