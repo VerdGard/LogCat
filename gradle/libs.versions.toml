@@ -1,11 +1,11 @@
-# 版本策略:
-# - AGP 保持 8.13.0。AGP 9.x 为破坏性大版本(内置 Kotlin 支持、buildFeatures.compose
-#   处理方式与部分 android{} DSL 均有变更),升级需要同步改写构建脚本,不属于
-#   「提升引用库版本」的范畴,单独处理。
-# - Gradle wrapper 保持 8.13,与 AGP 8.13 已验证的组合一致。
-# - Kotlin / Compose BOM / AndroidX 均为当前最新稳定版。
+# 版本策略:全部取当前最新稳定版。
+# AGP 9.x 引入新 DSL 与内置 Kotlin 支持,本项目仍用 kotlin-android + 旧 DSL,
+# 因此在 gradle.properties 里以 android.newDsl=false / android.builtInKotlin=false
+# 走官方过渡路径(该 opt-out 将在 AGP 10 移除,届时需迁移)。
+# 最新版 AndroidX(Compose BOM 2026.09 / core 1.19 / lifecycle 2.11)要求
+# compileSdk 37 且 AGP >= 9.1,故 compileSdk/targetSdk 一并提到 37。
 [versions]
-agp = "8.13.0"
+agp = "9.5.0"
 kotlin = "2.4.21"
 coreKtx = "1.19.1"
 lifecycle = "2.11.0"
