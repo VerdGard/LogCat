@@ -230,9 +230,17 @@ class McpTools(private val app: LogCatApplication) {
     private fun processesTool() = ToolSpec(
         name = "logcat_processes",
         title = "进程列表",
-        description = "列出设备进程(PID + 名称),便于结合 pid 过滤日志。需要 Root 或 Shizuku。",
-        inputSchema = schema(emptyMap()),
-    ) {
+        description = "列出设备进程(PID + 名称),便于结合 pid 过滤日志。需要 Root 或 Shizuku。" +
+            "设备进程通常有一千多个,建议用 keyword 过滤或配合 limit/offset 分页。",
+        inputSchema = schema(
+            mapOf(
+                "keyword" to prop("string", "进程名包含匹配(不区分大小写)"),
+                "pid" to propInt("只返回该 PID"),
+                "limit" to propInt("返回条数上限", 100),
+                "offset" to propInt("跳过条数,用于分页", 0),
+            )
+        ),
+    ) { args ->
         val mode = activeModeOrDefault()
         if (mode == ShellMode.DEFAULT) {
             return@ToolSpec textContent(
@@ -241,14 +249,33 @@ class McpTools(private val app: LogCatApplication) {
             )
         }
         val raw = runCatching { Shells.execOnce(mode, listOf("ps", "-A", "-o", "PID,NAME")) }.getOrElse { "" }
-        val array = JSONArray()
-        raw.lineSequence().drop(1).forEach { line ->
+        val keyword = args.optStringOrNull("keyword")?.lowercase()
+        val pidFilter = args.optInt("pid", -1)
+        val limit = args.optInt("limit", 100).coerceIn(1, 2000)
+        val offset = args.optInt("offset", 0).coerceAtLeast(0)
+
+        val all = raw.lineSequence().drop(1).mapNotNull { line ->
             val parts = line.trim().split(Regex("\\s+"), limit = 2)
-            if (parts.size == 2 && parts[0].toIntOrNull() != null) {
-                array.put(JSONObject().put("pid", parts[0].toInt()).put("name", parts[1]))
-            }
-        }
-        textContent(JSONObject().put("mode", mode.id).put("count", array.length()).put("processes", array))
+            val pid = parts.getOrNull(0)?.toIntOrNull()
+            val name = parts.getOrNull(1)
+            if (pid != null && name != null) pid to name else null
+        }.filter { (pid, name) ->
+            (pidFilter <= 0 || pid == pidFilter) &&
+                (keyword == null || name.lowercase().contains(keyword))
+        }.toList()
+
+        val page = all.drop(offset).take(limit)
+        val array = JSONArray()
+        page.forEach { (pid, name) -> array.put(JSONObject().put("pid", pid).put("name", name)) }
+        textContent(
+            JSONObject()
+                .put("mode", mode.id)
+                .put("totalMatched", all.size)
+                .put("returned", array.length())
+                .put("offset", offset)
+                .put("hasMore", offset + array.length() < all.size)
+                .put("processes", array)
+        )
     }
 
     // ---------- 崩溃 ----------
@@ -305,8 +332,15 @@ class McpTools(private val app: LogCatApplication) {
     ) { args ->
         val id = args.optStringOrNull("id")
         if (id != null) {
-            onMain { app.crashStore.remove(id) }
-            textContent(JSONObject().put("ok", true).put("removed", id))
+            // 删除前先确认存在,否则「删了不存在的记录」也会返回 ok,调用方无法区分
+            val existed = app.crashStore.find(id) != null
+            if (existed) onMain { app.crashStore.remove(id) }
+            textContent(
+                JSONObject()
+                    .put("ok", existed)
+                    .put("removed", if (existed) id else JSONObject.NULL)
+                    .put("reason", if (existed) JSONObject.NULL else "未找到该 id")
+            )
         } else {
             onMain { app.crashStore.clear() }
             textContent(JSONObject().put("ok", true).put("cleared", true))
@@ -393,7 +427,18 @@ class McpTools(private val app: LogCatApplication) {
                 .put("is64Bit", android.os.Process.is64Bit())
                 .put("rootAvailable", availability.root)
                 .put("shizukuInstalled", availability.shizukuInstalled)
+                .put("shizukuBinderAlive", availability.shizukuBinderAlive)
                 .put("shizukuUsable", availability.shizukuUsable)
+                // Sui 等内嵌方案下未安装管理器 App 但服务仍可用,单独给出结论避免误判
+                .put(
+                    "shizukuNote",
+                    when {
+                        availability.shizukuUsable -> "可用"
+                        availability.shizukuBinderAlive -> "服务在运行,但未授权"
+                        availability.shizukuInstalled -> "已安装,服务未运行"
+                        else -> "未检测到 Shizuku / Sui"
+                    }
+                )
         )
     }
 

@@ -61,12 +61,24 @@ class LogCatApplication : Application() {
         AppLog.info("Shizuku 已安装=${ShizukuManager.isInstalled(this)}")
     }
 
-    /** 当前各模式可用性(su 探测有文件 IO,调用方应避免在主线程高频调用)。 */
-    fun modeAvailability(): ModeAvailability = ModeAvailability(
-        root = Shells.hasRootBinary(),
-        shizukuInstalled = ShizukuManager.isInstalled(this),
-        shizukuUsable = ShizukuManager.hasPermission(),
-    )
+    /**
+     * 当前各模式可用性(su 探测有文件 IO,调用方应避免在主线程高频调用)。
+     *
+     * Shizuku 的三个信号必须一起读:
+     * - installed:管理器 App 是否安装(不决定可用性)
+     * - binderAlive:服务是否在跑
+     * - usable:是否已授权
+     * 只报 usable 会出现「installed=false 但 usable=true」的矛盾结果(Sui 场景)。
+     */
+    fun modeAvailability(): ModeAvailability {
+        ShizukuManager.refresh()
+        return ModeAvailability(
+            root = Shells.hasRootBinary(),
+            shizukuInstalled = ShizukuManager.isInstalled(this),
+            shizukuBinderAlive = ShizukuManager.isBinderAlive(),
+            shizukuUsable = ShizukuManager.hasPermission(),
+        )
+    }
 
     /** 更新并持久化设置,返回旧值用于判断是否需要重启日志流。 */
     fun updateSettings(transform: (AppSettings) -> AppSettings): AppSettings {

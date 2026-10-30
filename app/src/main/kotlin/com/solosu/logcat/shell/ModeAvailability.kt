@@ -3,7 +3,10 @@ package com.solosu.logcat.shell
 /** 各模式的可用性快照,用于设置页展示与自动降级。 */
 data class ModeAvailability(
     val root: Boolean = false,
+    /** Shizuku 管理器 App 是否安装。Sui 等内嵌方案下可能为 false,但服务仍可用。 */
     val shizukuInstalled: Boolean = false,
+    /** Shizuku binder 是否存活(服务是否在运行)。 */
+    val shizukuBinderAlive: Boolean = false,
     val shizukuUsable: Boolean = false,
 ) {
     fun isAvailable(mode: ShellMode): Boolean = when (mode) {
