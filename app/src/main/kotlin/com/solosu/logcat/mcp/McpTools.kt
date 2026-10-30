@@ -341,16 +341,37 @@ class McpTools(private val app: LogCatApplication) {
         if (id != null) {
             // 删除前先确认存在,否则「删了不存在的记录」也会返回 ok,调用方无法区分
             val existed = app.crashStore.find(id) != null
-            if (existed) onMain { app.crashStore.remove(id) }
+            if (!existed) {
+                return@ToolSpec textContent(
+                    JSONObject().put("ok", false).put("removed", JSONObject.NULL)
+                        .put("reason", "未找到该 id")
+                )
+            }
+            // 写盘可能失败(磁盘满 / 权限),必须如实回报,不能一律 ok=true。
+            // 这里不把 Result 穿过 onMain 的泛型边界,而是就地折成可空错误串。
+            val failure = onMain {
+                app.crashStore.remove(id).exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+            }
             textContent(
-                JSONObject()
-                    .put("ok", existed)
-                    .put("removed", if (existed) id else JSONObject.NULL)
-                    .put("reason", if (existed) JSONObject.NULL else "未找到该 id")
+                if (failure == null) {
+                    JSONObject().put("ok", true).put("removed", id).put("reason", JSONObject.NULL)
+                } else {
+                    JSONObject().put("ok", false).put("removed", JSONObject.NULL)
+                        .put("reason", "写入失败:$failure")
+                }
             )
         } else {
-            onMain { app.crashStore.clear() }
-            textContent(JSONObject().put("ok", true).put("cleared", true))
+            val failure = onMain {
+                app.crashStore.clear().exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+            }
+            textContent(
+                if (failure == null) {
+                    JSONObject().put("ok", true).put("cleared", true)
+                } else {
+                    JSONObject().put("ok", false).put("cleared", false)
+                        .put("reason", "写入失败:$failure")
+                }
+            )
         }
     }
 

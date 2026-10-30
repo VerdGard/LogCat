@@ -50,7 +50,14 @@ data class LogEntry(
 ) {
     val clock: String get() = "$date $time"
 
-    val searchText: String by lazy { "$tag $message".lowercase() }
+    /**
+     * 用于关键字匹配的小写文本。
+     *
+     * 写成类体里的普通 val 而非 `by lazy`:LogRepository 会为每条日志 copy 一次
+     * 以重编 seq,`by lazy` 会在每次 copy 时重建 Lazy 对象并丢失已算结果,
+     * 反而比直接计算更贵。放在类体(而非构造参数)可以避免污染 equals/copy。
+     */
+    val searchText: String = "$tag $message".lowercase()
 }
 
 /** 还原为接近 logcat -v threadtime 的单行文本,便于复制/导出。 */

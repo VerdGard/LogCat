@@ -11,6 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -233,14 +234,29 @@ class McpServer(private val app: LogCatApplication) {
     ) {
         companion object {
             fun read(input: InputStream): HttpRequest? {
-                val headerBuffer = StringBuilder()
-                while (!headerBuffer.endsWith("\r\n\r\n")) {
+                /*
+                 * 用 4 字节状态机检测 header 结束,替代原先的
+                 * `while (!sb.endsWith("\r\n\r\n"))`。
+                 *
+                 * 两点改进:
+                 * 1. 旧写法每读一个字节就对整个已读内容做一次 4 字符比较,
+                 *    整体是 O(n²);状态机只比较当前字节,是 O(n)。
+                 * 2. 先收字节再统一按 ISO-8859-1 解码,与原来
+                 *    append(b.toChar()) 的结果等价(0-255 一一映射),
+                 *    但语义更明确:header 是字节序列,不应逐字符处理。
+                 *    body 仍保持原始字节,不受影响。
+                 */
+                val headerBytes = ByteArrayOutputStream(1024)
+                var matched = 0
+                val terminator = byteArrayOf(0x0D, 0x0A, 0x0D, 0x0A)
+                while (matched < terminator.size) {
                     val b = input.read()
                     if (b == -1) return null
-                    headerBuffer.append(b.toChar())
-                    if (headerBuffer.length > MAX_HEADER_BYTES) return null
+                    headerBytes.write(b)
+                    if (headerBytes.size() > MAX_HEADER_BYTES) return null
+                    matched = if (b == terminator[matched].toInt()) matched + 1 else 0
                 }
-                val lines = headerBuffer.toString().split("\r\n").filter { it.isNotEmpty() }
+                val lines = headerBytes.toString("ISO-8859-1").split("\r\n").filter { it.isNotEmpty() }
                 if (lines.isEmpty()) return null
                 val requestLine = lines.first().split(" ")
                 if (requestLine.size < 2) return null

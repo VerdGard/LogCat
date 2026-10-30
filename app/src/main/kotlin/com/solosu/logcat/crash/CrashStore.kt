@@ -1,6 +1,7 @@
 package com.solosu.logcat.crash
 
 import android.content.Context
+import com.solosu.logcat.data.AppLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,28 +53,23 @@ class CrashStore(private val context: Context) {
         _records.value = loaded
     }
 
-    fun add(record: CrashRecord) {
-        synchronized(lock) {
-            val current = readAll()
-            val updated = (listOf(record) + current).take(MAX_RECORDS)
-            writeAll(updated)
-            _records.value = updated
-        }
+    /*
+     * 下面三个写操作都在「先写盘、写成功才更新内存」的顺序下执行。
+     * 反过来(先更新 _records 再写盘)会让磁盘失败时界面显示成功,
+     * 用户重启后发现记录凭空消失,比直接报错更难排查。
+     */
+    fun add(record: CrashRecord): Result<Unit> = synchronized(lock) {
+        val updated = (listOf(record) + readAll()).take(MAX_RECORDS)
+        writeAll(updated).onSuccess { _records.value = updated }
     }
 
-    fun remove(id: String) {
-        synchronized(lock) {
-            val updated = readAll().filterNot { it.id == id }
-            writeAll(updated)
-            _records.value = updated
-        }
+    fun remove(id: String): Result<Unit> = synchronized(lock) {
+        val updated = readAll().filterNot { it.id == id }
+        writeAll(updated).onSuccess { _records.value = updated }
     }
 
-    fun clear() {
-        synchronized(lock) {
-            writeAll(emptyList())
-            _records.value = emptyList()
-        }
+    fun clear(): Result<Unit> = synchronized(lock) {
+        writeAll(emptyList()).onSuccess { _records.value = emptyList() }
     }
 
     fun find(id: String): CrashRecord? = _records.value.firstOrNull { it.id == id }
@@ -98,26 +94,58 @@ class CrashStore(private val context: Context) {
                     )
                 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse { throwable ->
+            // 之前这里 getOrDefault 会静默吃掉解析错误:损坏的文件看起来像「没有崩溃记录」,
+            // 用户下一次写入就把它覆盖掉了。现在先备份再当空处理。
+            quarantineBrokenFile(throwable.message ?: throwable.javaClass.simpleName)
+            emptyList()
+        }
     }
 
-    private fun writeAll(records: List<CrashRecord>) {
+    /**
+     * 全量写回。返回是否成功。
+     *
+     * 原实现用 runCatching{} 包住后什么也不做:磁盘满或权限异常时记录直接丢失,
+     * 界面上完全看不出来。这里把失败上报到 AppLog(设置页「工具日志」可见),
+     * 并让调用方决定是否对外返回失败。
+     *
+     * 采用「先写临时文件再 rename」的方式,避免写到一半进程被杀导致 crashes.json
+     * 变成半截 JSON(那样下次 readAll 解析失败会静默清空全部历史)。
+     */
+    private fun writeAll(records: List<CrashRecord>): Result<Unit> = runCatching {
+        val array = JSONArray()
+        records.forEach { record ->
+            array.put(
+                JSONObject().apply {
+                    put("id", record.id)
+                    put("time", record.time)
+                    put("thread", record.thread)
+                    put("exception", record.exception)
+                    put("stackTrace", record.stackTrace)
+                    put("module", record.module)
+                    put("fromSystem", record.fromSystem)
+                }
+            )
+        }
+        val payload = array.toString()
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeText(payload)
+        if (!tmp.renameTo(file)) {
+            // 某些文件系统上 rename 到已存在目标会失败,退化为覆盖写
+            file.writeText(payload)
+            tmp.delete()
+        }
+    }.onFailure { throwable ->
+        AppLog.error("崩溃记录写入失败:${throwable.message ?: throwable.javaClass.simpleName}")
+    }
+
+    /** 读档失败时保留原文件并改名备份,避免下次写入把用户历史直接覆盖掉。 */
+    private fun quarantineBrokenFile(reason: String) {
+        AppLog.warn("崩溃记录文件损坏,已备份:${file.name} ($reason)")
         runCatching {
-            val array = JSONArray()
-            records.forEach { record ->
-                array.put(
-                    JSONObject().apply {
-                        put("id", record.id)
-                        put("time", record.time)
-                        put("thread", record.thread)
-                        put("exception", record.exception)
-                        put("stackTrace", record.stackTrace)
-                        put("module", record.module)
-                        put("fromSystem", record.fromSystem)
-                    }
-                )
-            }
-            file.writeText(array.toString())
+            val backup = File(file.parentFile, "${file.name}.broken")
+            if (backup.exists()) backup.delete()
+            file.renameTo(backup)
         }
     }
 
