@@ -24,6 +24,12 @@ android {
         buildConfig true
     }
 
+    // 纯 JVM 单测:LogcatParser / LogcatCommand 不依赖 Android API,
+    // 用 testOptions.unitTests.returnDefaultValues 兜住零星的 android.util.Log 调用。
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
     signingConfigs {
         if (ciKeyStore) {
             ci {
@@ -80,4 +86,6 @@ dependencies {
     implementation libs.material
     implementation libs.shizuku.api
     implementation libs.shizuku.provider
+
+    testImplementation libs.junit
 }

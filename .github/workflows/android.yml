@@ -68,6 +68,9 @@ jobs:
             echo "未配置签名 Secrets,release 将回退 debug 签名"
           fi
 
+      - name: Run unit tests
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
       - name: Build debug + release
         run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
 

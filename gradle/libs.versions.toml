@@ -6,6 +6,7 @@ lifecycle = "2.9.4"
 activityCompose = "1.10.1"
 composeBom = "2025.09.00"
 coroutines = "1.10.2"
+junit = "4.13.2"
 material = "1.13.0"
 shizuku = "13.1.5"
 
@@ -28,3 +29,4 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -56,8 +56,8 @@ class McpTools(private val app: LogCatApplication) {
                 "keyword" to prop("string", "消息内容关键字(不区分大小写)"),
                 "pid" to propInt("按进程 PID 过滤"),
                 "limit" to propInt("返回条数上限", 200),
-                "offset" to propInt("从末尾向前跳过的条数,用于分页", 0),
-                "tail" to propBool("为 true 时返回最新的 N 条(默认 true)", true),
+                "offset" to propInt("从末尾(最新)向前跳过的条数,用于分页", 0),
+                "tail" to propBool("true=返回最新的 limit 条且按时间正序;false=返回同一窗口但最新在前", true),
             ),
         ),
     ) { args ->
@@ -75,13 +75,13 @@ class McpTools(private val app: LogCatApplication) {
                 (keyword == null || entry.message.lowercase().contains(keyword)) &&
                 (pid <= 0 || entry.pid == pid)
         }
-        val sliced = if (args.optBoolean("tail", true)) {
-            val end = (matched.size - offset).coerceAtLeast(0)
-            val start = (end - limit).coerceAtLeast(0)
-            matched.subList(start, end)
-        } else {
-            matched.drop(offset).take(limit)
-        }
+        // offset 统一语义:从末尾(最新一条)向更早方向跳过 offset 条。
+        // 两种模式共享同一窗口:tail=true 以时间正序返回窗口内内容,
+        // tail=false 返回同一窗口但倒序(最新在前),便于从新往旧逐页回溯。
+        val end = (matched.size - offset).coerceAtLeast(0)
+        val start = (end - limit).coerceAtLeast(0)
+        val window = matched.subList(start, end)
+        val sliced = if (args.optBoolean("tail", true)) window else window.reversed()
         textContent(
             JSONObject()
                 .put("totalMatched", matched.size)
@@ -375,7 +375,7 @@ class McpTools(private val app: LogCatApplication) {
                 "buffer" to prop("string", "缓冲区", listOf("all", "main", "system", "crash")),
                 "level" to prop("string", "最小级别", listOf("V", "D", "I", "W", "E", "F")),
                 "maxLines" to propInt("缓冲行数上限"),
-                "keyword" to prop("string", "关键字过滤"),
+                "keyword" to prop("string", "关键字过滤,传空串表示清空"),
                 "wrapLines" to propBool("自动换行"),
                 "showTimestamp" to propBool("显示时间戳"),
                 "showPidTid" to propBool("显示 PID/TID"),
@@ -383,7 +383,7 @@ class McpTools(private val app: LogCatApplication) {
                 "captureCrashes" to propBool("记录崩溃"),
                 "themeMode" to prop("string", "主题模式", listOf("system", "light", "dark")),
                 "monetEnabled" to propBool("莫奈取色"),
-                "paletteId" to prop("string", "预设色板", com.solosu.logcat.ui.theme.AppPalette.entries.map { it.id }),
+                "paletteId" to prop("string", "预设色板,空串即恢复默认", com.solosu.logcat.ui.theme.AppPalette.entries.map { it.id }),
                 "logFontSize" to propInt("日志字号 sp"),
             )
         ),
@@ -488,7 +488,9 @@ class McpTools(private val app: LogCatApplication) {
             LogLevel.entries.firstOrNull { it.letter.toString() == value }?.let { result = result.copy(level = it) }
         }
         if (json.has("maxLines")) result = result.copy(maxLines = json.optInt("maxLines").coerceIn(500, 20_000))
-        json.optStringOrNull("keyword")?.let { result = result.copy(keyword = it) }
+        // keyword / paletteId 允许显式传空串来清空:这里必须用 has() 判断存在性,
+        // optStringOrNull 会把 "" 当作缺省,导致清空操作被静默忽略。
+        if (json.has("keyword")) result = result.copy(keyword = json.optString("keyword"))
         if (json.has("wrapLines")) result = result.copy(wrapLines = json.optBoolean("wrapLines"))
         if (json.has("showTimestamp")) result = result.copy(showTimestamp = json.optBoolean("showTimestamp"))
         if (json.has("showPidTid")) result = result.copy(showPidTid = json.optBoolean("showPidTid"))
@@ -498,7 +500,13 @@ class McpTools(private val app: LogCatApplication) {
             result = result.copy(themeMode = com.solosu.logcat.data.ThemeMode.fromId(it))
         }
         if (json.has("monetEnabled")) result = result.copy(monetEnabled = json.optBoolean("monetEnabled"))
-        json.optStringOrNull("paletteId")?.let { result = result.copy(paletteId = it) }
+        // paletteId 为空串时回落默认色板,避免存下一个无效 id
+        if (json.has("paletteId")) {
+            val value = json.optString("paletteId")
+            result = result.copy(
+                paletteId = if (value.isBlank()) com.solosu.logcat.ui.theme.AppPalette.GREEN.id else value
+            )
+        }
         if (json.has("logFontSize")) result = result.copy(logFontSize = json.optInt("logFontSize").coerceIn(10, 20))
         return result
     }

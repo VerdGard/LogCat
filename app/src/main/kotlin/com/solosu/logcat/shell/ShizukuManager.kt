@@ -38,7 +38,11 @@ object ShizukuManager {
 
     private var grantedHint: Boolean? = null
 
+    /** 应用 Context,用于在 refresh() 中重新探测包安装状态;install() 之前为 null。 */
+    private var appContext: Context? = null
+
     fun install(context: Context) {
+        appContext = context.applicationContext
         _state.value = _state.value.copy(installed = isInstalled(context))
         runCatching { Shizuku.addBinderReceivedListenerSticky(binderReceivedListener) }
         runCatching { Shizuku.addBinderDeadListener(binderDeadListener) }
@@ -46,8 +50,15 @@ object ShizukuManager {
         refresh()
     }
 
+    /**
+     * 刷新授权状态。
+     *
+     * installed 必须每次重新探测:用户可能在应用运行期间安装/卸载 Sui 或 Shizuku,
+     * 只依赖 install() 时的缓存会让 state.installed 长期失真(典型症状:Sui 下
+     * binderAlive=true 但 installed 一直 false)。
+     */
     fun refresh() {
-        val installed = _state.value.installed
+        val installed = appContext?.let { isInstalled(it) } ?: _state.value.installed
         val alive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
         val granted = if (alive) {
             runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }
