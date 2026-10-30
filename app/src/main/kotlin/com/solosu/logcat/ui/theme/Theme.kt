@@ -9,6 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -65,7 +66,12 @@ fun LogCatTheme(
         }
     }
 
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    // 系统「移除动画」偏好在主题层读取一次,向下通过 CompositionLocal 下发
+    val motion = rememberMotionPreference()
+
+    CompositionLocalProvider(LocalReduceMotion provides motion) {
+        MaterialTheme(colorScheme = colorScheme, content = content)
+    }
 }
 
 // ---------- 由种子色衍生配色 ----------

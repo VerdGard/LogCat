@@ -4,7 +4,10 @@
 
 ## 功能
 
-- 底部导航:日志 / 崩溃 / 设置三页平级切换(淡入淡出,无层级暗示)
+- 底部导航:日志 / 崩溃 / 设置三页平级切换(淡入淡出 + 极小位移,无层级暗示)
+- 设置页分组吸顶 + 卡片容器,顶栏下方一条快速跳转 chip 直达任意分组
+- 统一动效体系(`ui/theme/Motion.kt`):时长与缓动收敛为常量,所有动画一致;
+  遵循系统「移除动画」设置,关闭时降级为无动画
 - 三种日志读取模式
   - **默认模式**:无需授权,通过 `--pid <自身进程>` 仅读取本应用日志
   - **Shizuku**:基于 Shizuku / Sui 授权,以 shell 身份读取整机日志(`dev.rikka.shizuku`)
@@ -56,9 +59,10 @@ app/src/main/kotlin/com/solosu/logcat/
     ├── logcat/                日志页
     ├── crash/                 崩溃页
     ├── settings/              设置页
-    ├── components/            共用组件(SwitchRow / SettingRow / EmptyState / Tag)
+    ├── components/            共用组件(SwitchRow / SettingRow / EmptyState / Tag /
+    │                           Interaction 按压与选中过渡)
     ├── icons/                 自绘矢量图标(不引入 material-icons-extended)
-    └── theme/                 色板与深浅色方案
+    └── theme/                 色板、深浅色方案与动效常量
 ```
 
 ## 说明

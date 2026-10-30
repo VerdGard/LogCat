@@ -93,6 +93,11 @@ import com.solosu.logcat.ui.components.writeTextToUri
 import com.solosu.logcat.ui.icons.AppIcons
 import com.solosu.logcat.ui.theme.LogColors
 import kotlinx.coroutines.launch
+import androidx.compose.animation.animateColorAsState
+import com.solosu.logcat.ui.components.animatedSelectionColor
+import com.solosu.logcat.ui.components.pressableClick
+import com.solosu.logcat.ui.theme.Motion
+import com.solosu.logcat.ui.theme.reduceMotion
 
 @Composable
 fun LogCatScreen(
@@ -271,8 +276,10 @@ fun LogCatScreen(
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             AnimatedVisibility(
                 visible = showSearch,
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                enter = fadeIn(Motion.medium<Float>(reduceMotion())) +
+                    slideInVertically(Motion.medium<androidx.compose.ui.unit.IntOffset>(reduceMotion())) { -it / 2 },
+                exit = fadeOut(Motion.exit<Float>(reduceMotion())) +
+                    slideOutVertically(Motion.exit<androidx.compose.ui.unit.IntOffset>(reduceMotion())) { -it / 2 },
             ) {
                 CompactSearchBar(
                     keyword = settings.keyword,
@@ -286,8 +293,10 @@ fun LogCatScreen(
 
             AnimatedVisibility(
                 visible = showFilters,
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                enter = fadeIn(Motion.medium<Float>(reduceMotion())) +
+                    slideInVertically(Motion.medium<androidx.compose.ui.unit.IntOffset>(reduceMotion())) { -it / 2 },
+                exit = fadeOut(Motion.exit<Float>(reduceMotion())) +
+                    slideOutVertically(Motion.exit<androidx.compose.ui.unit.IntOffset>(reduceMotion())) { -it / 2 },
             ) {
                 FilterPanel(
                     settings = settings,
@@ -577,18 +586,28 @@ private fun FilterChip(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
+    // 选中态颜色过渡,避免切换级别时整排 chip 同时硬跳
+    val background = animatedSelectionColor(
+        selected = selected,
+        selectedColor = tint.copy(alpha = 0.15f),
+        normalColor = Color.Transparent,
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) tint else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = Motion.fast(reduceMotion()),
+        label = "filter-chip-content",
+    )
+
+    // 视觉 26dp,外层 48dp 触控区
     Box(
         modifier = Modifier
             .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .clickableNoRipple(onClick)
-            .semantics {
-                role = Role.Button
-                this.contentDescription = contentDescription
-            }
+            .pressableClick(onClick, role = Role.Button)
+            .semantics { this.contentDescription = contentDescription }
             .padding(vertical = 11.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) tint.copy(alpha = 0.15f) else Color.Transparent)
+            .background(background)
             .padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -596,7 +615,7 @@ private fun FilterChip(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) tint else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
         )
     }
 }
@@ -658,7 +677,7 @@ private fun LogRow(
                 }
             )
             .clickable(onClick = onToggle)
-            .animateContentSize(),
+            .animateContentSize(animationSpec = Motion.medium<androidx.compose.ui.unit.IntSize>(reduceMotion())),
     ) {
         // 级别色条:2dp 宽,贯穿整行高度
         Box(

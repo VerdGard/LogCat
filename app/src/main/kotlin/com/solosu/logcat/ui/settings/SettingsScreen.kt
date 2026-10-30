@@ -68,6 +68,19 @@ import com.solosu.logcat.ui.components.rememberTextClipboard
 import com.solosu.logcat.ui.icons.AppIcons
 import com.solosu.logcat.ui.theme.AppPalette
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.solosu.logcat.ui.components.PressableBox
+import androidx.compose.animation.animateColorAsState
+import com.solosu.logcat.ui.components.animatedSelectionColor
+import com.solosu.logcat.ui.components.pressableClick
+import com.solosu.logcat.ui.theme.Motion
+import com.solosu.logcat.ui.theme.reduceMotion
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 
 @Composable
 fun SettingsScreen(
@@ -99,345 +112,388 @@ fun SettingsScreen(
         )
     }
 
+    /*
+     * 顶部快速跳转。
+     *
+     * 设置页共 7 个分组、滚动长度约 4 屏,逐屏找某一项的成本不低。
+     * 这里在顶栏下挂一条 chip,点哪个就平滑滚到对应分组的 stickyHeader。
+     *
+     * 索引必须与实际 item 顺序一致,且「关于」的索引随工具日志条数变化,
+     * 所以不写死数字,由 SettingsSection 统一算出来。
+     */
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    val sectionStarts = remember(appLogs.size) {
+        buildList {
+            var index = 0
+            SettingsSection.entries.forEach { section ->
+                add(section to index)
+                index += 1                    // stickyHeader
+                index += 1                    // 该组的卡片 item
+                if (section == SettingsSection.APP_LOG && appLogs.isNotEmpty()) {
+                    index += minOf(appLogs.size, 40)
+                }
+            }
+        }.toMap()
+    }
+
     Scaffold(
         modifier = modifier,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-                title = {
-                    Column {
-                        Text("设置", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = "${settings.mode.label} · ${settings.buffer.label} · ${settings.maxLines} 行",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    title = {
+                        Column {
+                            Text("设置", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "${settings.mode.label} · ${settings.buffer.label} · ${settings.maxLines} 行",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+
+                SectionJumpBar(
+                    onJump = { section ->
+                        val target = sectionStarts[section] ?: return@SectionJumpBar
+                        scope.launch { listState.animateScrollToItem(target) }
+                    },
+                )
+            }
         },
     ) { innerPadding ->
-        // 单页滚动 + 分组标题,取代之前 7 个折叠卡片需要逐层展开才能找到设置项的做法
         LazyColumn(
+            state = listState,
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 32.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             // ---------- 外观 ----------
-            item { GroupHeader("外观", "主题模式、色板、日志字号") }
-
-            item {
-                ChoiceBlock("主题模式") {
-                    ThemeMode.entries.forEach { mode ->
-                        ChoiceChip(
-                            text = mode.label,
-                            selected = settings.themeMode == mode,
-                            onClick = { viewModel.setThemeMode(mode) },
-                        )
+            stickyHeader(key = "hdr-appearance") {
+                GroupHeader("外观", "主题模式、色板、日志字号")
+            }
+            item(key = "appearance") {
+                SettingsCard {
+                    ChoiceBlock("主题模式") {
+                        ThemeMode.entries.forEach { mode ->
+                            ChoiceChip(
+                                text = mode.label,
+                                selected = settings.themeMode == mode,
+                                onClick = { viewModel.setThemeMode(mode) },
+                            )
+                        }
                     }
-                }
-            }
 
-            item {
-                SwitchRow(
-                    title = "莫奈取色",
-                    supporting = if (android.os.Build.VERSION.SDK_INT >= 31) {
-                        "跟随系统壁纸生成配色"
-                    } else {
-                        "需要 Android 12 及以上,当前系统不支持"
-                    },
-                    checked = settings.monetEnabled,
-                    onCheckedChange = viewModel::setMonetEnabled,
-                    enabled = android.os.Build.VERSION.SDK_INT >= 31,
-                )
-            }
+                    RowDivider()
 
-            item {
-                val monetActive = settings.monetEnabled && android.os.Build.VERSION.SDK_INT >= 31
-                ChoiceBlock(
-                    label = "预设色板",
-                    note = if (monetActive) "已被莫奈取色覆盖" else null,
-                ) {
-                    AppPalette.entries.forEach { palette ->
-                        PaletteDot(
-                            palette = palette,
-                            selected = settings.paletteId == palette.id,
-                            enabled = !monetActive,
-                            onClick = { viewModel.setPalette(palette.id) },
-                        )
+                    SwitchRow(
+                        title = "莫奈取色",
+                        supporting = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            "跟随系统壁纸生成配色"
+                        } else {
+                            "需要 Android 12 及以上,当前系统不支持"
+                        },
+                        checked = settings.monetEnabled,
+                        onCheckedChange = viewModel::setMonetEnabled,
+                        enabled = android.os.Build.VERSION.SDK_INT >= 31,
+                    )
+
+                    RowDivider()
+
+                    val monetActive = settings.monetEnabled && android.os.Build.VERSION.SDK_INT >= 31
+                    ChoiceBlock(
+                        label = "预设色板",
+                        note = if (monetActive) "已被莫奈取色覆盖" else null,
+                    ) {
+                        AppPalette.entries.forEach { palette ->
+                            PaletteDot(
+                                palette = palette,
+                                selected = settings.paletteId == palette.id,
+                                enabled = !monetActive,
+                                onClick = { viewModel.setPalette(palette.id) },
+                            )
+                        }
                     }
-                }
-            }
 
-            item {
-                SliderBlock(
-                    label = "日志字号",
-                    valueText = "${settings.logFontSize}sp",
-                    value = settings.logFontSize.toFloat(),
-                    range = SettingsRepository.MIN_FONT.toFloat()..SettingsRepository.MAX_FONT.toFloat(),
-                    steps = SettingsRepository.MAX_FONT - SettingsRepository.MIN_FONT - 1,
-                    onValueChange = { viewModel.setLogFontSize(it.roundToInt()) },
-                )
+                    RowDivider()
+
+                    SliderBlock(
+                        label = "日志字号",
+                        valueText = "${settings.logFontSize}sp",
+                        value = settings.logFontSize.toFloat(),
+                        range = SettingsRepository.MIN_FONT.toFloat()..SettingsRepository.MAX_FONT.toFloat(),
+                        steps = SettingsRepository.MAX_FONT - SettingsRepository.MIN_FONT - 1,
+                        onValueChange = { viewModel.setLogFontSize(it.roundToInt()) },
+                    )
+                }
             }
 
             // ---------- 采集 ----------
-            item { GroupHeader("采集", "权限模式、缓冲区、缓冲行数") }
-
-            item {
-                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    ShellMode.entries.forEach { mode ->
-                        ModeOption(
-                            mode = mode,
-                            selected = settings.mode == mode,
-                            usable = availability.isAvailable(mode),
-                            statusText = when (mode) {
-                                ShellMode.DEFAULT -> "无需授权,仅本应用日志"
-                                ShellMode.ROOT -> if (availability.root) "已检测到 su" else "未检测到 su"
-                                ShellMode.SHIZUKU -> when {
-                                    !availability.shizukuInstalled -> "未安装 Shizuku"
-                                    availability.shizukuUsable -> "已授权"
-                                    else -> "未授权 / 服务未运行"
-                                }
-                            },
-                            onSelect = { viewModel.setMode(mode) },
-                        )
+            stickyHeader(key = "hdr-capture") {
+                GroupHeader("采集", "权限模式、缓冲区、缓冲行数")
+            }
+            item(key = "capture") {
+                SettingsCard {
+                    Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                        ShellMode.entries.forEach { mode ->
+                            ModeOption(
+                                mode = mode,
+                                selected = settings.mode == mode,
+                                usable = availability.isAvailable(mode),
+                                statusText = when (mode) {
+                                    ShellMode.DEFAULT -> "无需授权,仅本应用日志"
+                                    ShellMode.ROOT -> if (availability.root) "已检测到 su" else "未检测到 su"
+                                    ShellMode.SHIZUKU -> when {
+                                        !availability.shizukuInstalled -> "未安装 Shizuku"
+                                        availability.shizukuUsable -> "已授权"
+                                        else -> "未授权 / 服务未运行"
+                                    }
+                                },
+                                onSelect = { viewModel.setMode(mode) },
+                            )
+                        }
                     }
                     Row(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         TextButton(onClick = { viewModel.requestShizukuPermission() }) { Text("申请授权") }
                         TextButton(onClick = { viewModel.refreshModes() }) { Text("刷新状态") }
                     }
-                }
-            }
 
-            item {
-                ChoiceBlock("缓冲区") {
-                    LogBuffer.entries.forEach { buffer ->
-                        ChoiceChip(
-                            text = buffer.label,
-                            selected = settings.buffer == buffer,
-                            onClick = { viewModel.setBuffer(buffer) },
-                        )
+                    RowDivider()
+
+                    ChoiceBlock("缓冲区") {
+                        LogBuffer.entries.forEach { buffer ->
+                            ChoiceChip(
+                                text = buffer.label,
+                                selected = settings.buffer == buffer,
+                                onClick = { viewModel.setBuffer(buffer) },
+                            )
+                        }
                     }
-                }
-            }
 
-            item {
-                SliderBlock(
-                    label = "缓冲行数上限",
-                    valueText = "${settings.maxLines}",
-                    value = settings.maxLines.toFloat(),
-                    range = SettingsRepository.MIN_LINES.toFloat()..SettingsRepository.MAX_LINES.toFloat(),
-                    steps = 0,
-                    onValueChange = { viewModel.setMaxLines(it.roundToInt()) },
-                    note = "超出上限后丢弃最早的日志,行数越大内存占用越高",
-                )
+                    RowDivider()
+
+                    SliderBlock(
+                        label = "缓冲行数上限",
+                        valueText = "${settings.maxLines}",
+                        value = settings.maxLines.toFloat(),
+                        range = SettingsRepository.MIN_LINES.toFloat()..SettingsRepository.MAX_LINES.toFloat(),
+                        steps = 0,
+                        onValueChange = { viewModel.setMaxLines(it.roundToInt()) },
+                        note = "超出上限后丢弃最早的日志,行数越大内存占用越高",
+                    )
+                }
             }
 
             // ---------- 显示 ----------
-            item { GroupHeader("显示", "级别、行密度、时间戳、滚动") }
-
-            item {
-                ChoiceBlock("最小级别") {
-                    LogLevel.entries
-                        .filterNot { it == LogLevel.ASSERT }
-                        .forEach { level ->
-                            ChoiceChip(
-                                text = level.label,
-                                selected = settings.level == level,
-                                onClick = { viewModel.setLevel(level) },
-                            )
-                        }
-                }
+            stickyHeader(key = "hdr-display") {
+                GroupHeader("显示", "级别、行密度、时间戳、滚动")
             }
+            item(key = "display") {
+                SettingsCard {
+                    ChoiceBlock("最小级别") {
+                        LogLevel.entries
+                            .filterNot { it == LogLevel.ASSERT }
+                            .forEach { level ->
+                                ChoiceChip(
+                                    text = level.label,
+                                    selected = settings.level == level,
+                                    onClick = { viewModel.setLevel(level) },
+                                )
+                            }
+                    }
 
-            item {
-                ChoiceBlock("行密度") {
-                    ChoiceChip(
-                        text = "紧凑",
-                        selected = settings.compactRows,
-                        onClick = { viewModel.setCompactRows(true) },
+                    RowDivider()
+
+                    ChoiceBlock("行密度") {
+                        ChoiceChip(
+                            text = "紧凑",
+                            selected = settings.compactRows,
+                            onClick = { viewModel.setCompactRows(true) },
+                        )
+                        ChoiceChip(
+                            text = "舒适",
+                            selected = !settings.compactRows,
+                            onClick = { viewModel.setCompactRows(false) },
+                        )
+                    }
+
+                    RowDivider()
+
+                    SwitchRow(
+                        title = "自动换行",
+                        supporting = "关闭后每条日志只显示一行,横向滚动查看",
+                        checked = settings.wrapLines,
+                        onCheckedChange = viewModel::setWrapLines,
                     )
-                    ChoiceChip(
-                        text = "舒适",
-                        selected = !settings.compactRows,
-                        onClick = { viewModel.setCompactRows(false) },
+                    RowDivider()
+                    SwitchRow(
+                        title = "显示时间戳",
+                        checked = settings.showTimestamp,
+                        onCheckedChange = viewModel::setShowTimestamp,
+                    )
+                    RowDivider()
+                    SwitchRow(
+                        title = "显示 PID",
+                        supporting = "在 tag 左侧显示来源进程号",
+                        checked = settings.showPidTid,
+                        onCheckedChange = viewModel::setShowPidTid,
+                    )
+                    RowDivider()
+                    SwitchRow(
+                        title = "自动滚动到最新",
+                        supporting = "关闭后新日志不会打断当前阅读位置",
+                        checked = settings.autoScroll,
+                        onCheckedChange = viewModel::setAutoScroll,
+                    )
+
+                    RowDivider()
+
+                    SettingRow(
+                        title = "当前关键字",
+                        supporting = if (settings.keyword.isBlank()) "未设置" else settings.keyword,
+                        trailing = {
+                            if (settings.keyword.isNotBlank()) {
+                                TextButton(onClick = { viewModel.setKeyword("") }) { Text("清除") }
+                            }
+                        },
                     )
                 }
-            }
-
-            item {
-                SwitchRow(
-                    title = "自动换行",
-                    supporting = "关闭后每条日志只显示一行,横向滚动查看",
-                    checked = settings.wrapLines,
-                    onCheckedChange = viewModel::setWrapLines,
-                )
-            }
-            item {
-                SwitchRow(
-                    title = "显示时间戳",
-                    checked = settings.showTimestamp,
-                    onCheckedChange = viewModel::setShowTimestamp,
-                )
-            }
-            item {
-                SwitchRow(
-                    title = "显示 PID",
-                    supporting = "在 tag 左侧显示来源进程号",
-                    checked = settings.showPidTid,
-                    onCheckedChange = viewModel::setShowPidTid,
-                )
-            }
-            item {
-                SwitchRow(
-                    title = "自动滚动到最新",
-                    supporting = "关闭后新日志不会打断当前阅读位置",
-                    checked = settings.autoScroll,
-                    onCheckedChange = viewModel::setAutoScroll,
-                )
-            }
-            item {
-                SettingRow(
-                    title = "当前关键字",
-                    supporting = if (settings.keyword.isBlank()) "未设置" else settings.keyword,
-                    trailing = {
-                        if (settings.keyword.isNotBlank()) {
-                            TextButton(onClick = { viewModel.setKeyword("") }) { Text("清除") }
-                        }
-                    },
-                )
             }
 
             // ---------- 崩溃 ----------
-            item { GroupHeader("崩溃", "自动记录 FATAL 与未捕获异常") }
-
-            item {
-                SwitchRow(
-                    title = "记录系统 FATAL 日志",
-                    supporting = "从 logcat 提取 FATAL EXCEPTION 段落,需 Root 或 Shizuku 覆盖全部进程",
-                    checked = settings.captureCrashes,
-                    onCheckedChange = viewModel::setCaptureCrashes,
-                )
+            stickyHeader(key = "hdr-crash") {
+                GroupHeader("崩溃", "自动记录 FATAL 与未捕获异常")
             }
-            item {
-                SettingRow(
-                    title = "清空全部崩溃记录",
-                    supporting = "删除本地保存的崩溃与堆栈",
-                    onClick = { confirmClearCrashes = true },
-                    trailing = {
-                        Icon(
-                            AppIcons.Delete,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                )
+            item(key = "crash") {
+                SettingsCard {
+                    SwitchRow(
+                        title = "记录系统 FATAL 日志",
+                        supporting = "从 logcat 提取 FATAL EXCEPTION 段落,需 Root 或 Shizuku 覆盖全部进程",
+                        checked = settings.captureCrashes,
+                        onCheckedChange = viewModel::setCaptureCrashes,
+                    )
+                    RowDivider()
+                    SettingRow(
+                        title = "清空全部崩溃记录",
+                        supporting = "删除本地保存的崩溃与堆栈",
+                        onClick = { confirmClearCrashes = true },
+                        trailing = {
+                            Icon(
+                                AppIcons.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                    )
+                }
             }
 
             // ---------- MCP ----------
-            item { GroupHeader("MCP 服务", if (mcpStatus.running) mcpStatus.endpoint else "未启动") }
-
-            item {
-                SwitchRow(
-                    title = "启用 MCP 服务",
-                    supporting = "在本机 127.0.0.1 开放 JSON-RPC 接口,供 AI 客户端读取日志与设置",
-                    checked = settings.mcpEnabled,
-                    onCheckedChange = viewModel::setMcpEnabled,
-                )
+            stickyHeader(key = "hdr-mcp") {
+                GroupHeader("MCP 服务", if (mcpStatus.running) mcpStatus.endpoint else "未启动")
             }
-            item {
-                SettingRow(
-                    title = "服务地址",
-                    supporting = mcpStatus.endpoint,
-                    trailing = {
-                        TextButton(
-                            onClick = {
-                                copyText(mcpStatus.endpoint)
-                                viewModel.postMessage("地址已复制")
-                            },
-                            enabled = mcpStatus.running,
-                        ) { Text("复制") }
-                    },
-                )
-            }
+            item(key = "mcp") {
+                SettingsCard {
+                    SwitchRow(
+                        title = "启用 MCP 服务",
+                        supporting = "在本机 127.0.0.1 开放 JSON-RPC 接口,供 AI 客户端读取日志与设置",
+                        checked = settings.mcpEnabled,
+                        onCheckedChange = viewModel::setMcpEnabled,
+                    )
+                    RowDivider()
+                    SettingRow(
+                        title = "服务地址",
+                        supporting = mcpStatus.endpoint,
+                        trailing = {
+                            TextButton(
+                                onClick = {
+                                    copyText(mcpStatus.endpoint)
+                                    viewModel.postMessage("地址已复制")
+                                },
+                                enabled = mcpStatus.running,
+                            ) { Text("复制") }
+                        },
+                    )
 
-            // B7 修复:端口输入用本地草稿态,不再直接用 settings.mcpPort 单向驱动输入框。
-            item { PortField(viewModel = viewModel, currentPort = settings.mcpPort) }
+                    RowDivider()
 
-            item {
-                TokenField(
-                    token = settings.mcpToken,
-                    onTokenChange = viewModel::setMcpToken,
-                    onGenerate = viewModel::regenerateMcpToken,
-                )
-            }
+                    // 端口输入用本地草稿态,不再直接用 settings.mcpPort 单向驱动输入框
+                    PortField(viewModel = viewModel, currentPort = settings.mcpPort)
 
-            mcpStatus.lastError?.let { error ->
-                item {
+                    RowDivider()
+
+                    TokenField(
+                        token = settings.mcpToken,
+                        onTokenChange = viewModel::setMcpToken,
+                        onGenerate = viewModel::regenerateMcpToken,
+                    )
+
+                    mcpStatus.lastError?.let { error ->
+                        Text(
+                            text = "启动失败:$error",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilledTonalButton(onClick = { viewModel.toggleMcp() }) {
+                            Text(if (mcpStatus.running) "停止服务" else "启动服务")
+                        }
+                        TextButton(onClick = { showMcpHelp(viewModel) }) { Text("用法示例") }
+                    }
+
                     Text(
-                        text = "启动失败:$error",
+                        text = "接口:POST / JSON-RPC 2.0,支持 initialize、tools/list、tools/call;" +
+                            "工具覆盖日志查询、统计、tag 排行、清空、采集控制、缓冲区导出、" +
+                            "进程列表、崩溃读写、设置读写、设备信息。",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
                     )
                 }
-            }
-
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilledTonalButton(onClick = { viewModel.toggleMcp() }) {
-                        Text(if (mcpStatus.running) "停止服务" else "启动服务")
-                    }
-                    TextButton(onClick = { showMcpHelp(viewModel) }) { Text("用法示例") }
-                }
-            }
-
-            item {
-                Text(
-                    text = "接口:POST / JSON-RPC 2.0,支持 initialize、tools/list、tools/call;" +
-                        "工具覆盖日志查询、统计、tag 排行、清空、采集控制、缓冲区导出、" +
-                        "进程列表、崩溃读写、设置读写、设备信息。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
             }
 
             // ---------- 工具日志 ----------
-            item { GroupHeader("工具日志", "LogCat 自身动作记录,排查采集失败时用") }
-
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton(onClick = {
-                        copyText(appLogs.joinToString("\n") { "${it.time} ${it.level} ${it.text}" })
-                        viewModel.postMessage("工具日志已复制")
-                    }) { Text("复制") }
-                    TextButton(onClick = { viewModel.clearAppLogs() }) { Text("清空") }
+            stickyHeader(key = "hdr-applog") {
+                GroupHeader("工具日志", "LogCat 自身动作记录,排查采集失败时用")
+            }
+            item(key = "applog-actions") {
+                SettingsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TextButton(onClick = {
+                            copyText(appLogs.joinToString("\n") { "${it.time} ${it.level} ${it.text}" })
+                            viewModel.postMessage("工具日志已复制")
+                        }) { Text("复制") }
+                        TextButton(onClick = { viewModel.clearAppLogs() }) { Text("清空") }
+                    }
+                    if (appLogs.isEmpty()) {
+                        Text(
+                            text = "暂无记录",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                        )
+                    }
                 }
             }
-
-            if (appLogs.isEmpty()) {
-                item {
-                    Text(
-                        text = "暂无记录",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
-                }
-            } else {
+            if (appLogs.isNotEmpty()) {
                 // 用 items 而非在 item 里 forEach,避免长列表一次性全部组合
                 items(
                     count = minOf(appLogs.size, 40),
@@ -451,32 +507,37 @@ fun SettingsScreen(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 1.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 1.dp),
                     )
                 }
             }
 
             // ---------- 关于 ----------
-            item { GroupHeader("关于", "版本、ABI、设备信息") }
-
-            item {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    AboutLine("应用", "LogCat")
-                    AboutLine("包名", "com.solosu.logcat")
-                    AboutLine("版本", "1.1.0")
-                    AboutLine("ABI", BuildInfo.abis)
-                    AboutLine("64 位进程", if (BuildInfo.is64Bit) "是" else "否")
-                    AboutLine("系统", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
-                    AboutLine("设备", "${android.os.Build.BRAND} ${android.os.Build.MODEL}")
-                    Text(
-                        text = "默认模式仅能读取本应用自身日志;Root 与 Shizuku 模式可读取整机日志。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 6.dp),
-                    )
+            stickyHeader(key = "hdr-about") {
+                GroupHeader("关于", "版本、ABI、设备信息")
+            }
+            item(key = "about") {
+                SettingsCard {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        AboutLine("应用", "LogCat")
+                        AboutLine("包名", "com.solosu.logcat")
+                        AboutLine("版本", "1.1.0")
+                        AboutLine("ABI", BuildInfo.abis)
+                        AboutLine("64 位进程", if (BuildInfo.is64Bit) "是" else "否")
+                        AboutLine("系统", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+                        AboutLine("设备", "${android.os.Build.BRAND} ${android.os.Build.MODEL}")
+                        Text(
+                            text = "默认模式仅能读取本应用自身日志;Root 与 Shizuku 模式可读取整机日志。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                 }
             }
         }
@@ -549,12 +610,76 @@ private fun TokenField(token: String, onTokenChange: (String) -> Unit, onGenerat
     }
 }
 
+/**
+ * 设置页分组。声明顺序必须与 LazyColumn 中 stickyHeader 的出现顺序一致,
+ * 顶部快速跳转依赖这个顺序推算每个分组的起始索引。
+ */
+private enum class SettingsSection(val label: String) {
+    APPEARANCE("外观"),
+    CAPTURE("采集"),
+    DISPLAY("显示"),
+    CRASH("崩溃"),
+    MCP("MCP"),
+    APP_LOG("工具日志"),
+    ABOUT("关于"),
+}
+
+/** 顶栏下方的一条分组跳转 chip,点击平滑滚动到对应分组。 */
+@Composable
+private fun SectionJumpBar(onJump: (SettingsSection) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        SettingsSection.entries.forEach { section ->
+            val tint = MaterialTheme.colorScheme.primary
+            PressableBox(
+                onClick = { onJump(section) },
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.height(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = section.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tint,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 11.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 卡片内的条目分隔线:左右缩进与内容起始对齐,不顶到卡片圆角。 */
+@Composable
+private fun RowDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+    )
+}
+
+/**
+ * 吸顶分组标题。
+ *
+ * 用 LazyColumn 的 stickyHeader 承载:滚动时当前分组名始终可见,
+ * 长列表(设置页共 7 组、800 行)里能随时知道自己在哪一块,
+ * 这是之前平铺标题做不到的。
+ *
+ * 背景必须是不透明的 surface,否则吸顶时会透出下方内容。
+ */
 @Composable
 private fun GroupHeader(title: String, subtitle: String? = null) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp),
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
     ) {
         Text(
             text = title,
@@ -571,9 +696,25 @@ private fun GroupHeader(title: String, subtitle: String? = null) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.padding(top = 2.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     }
+}
+
+/**
+ * 分组卡片容器:把一组设置项包在圆角卡片里。
+ *
+ * 之前所有设置项平铺在同一底色上,靠留白分组,层级很弱。
+ * 改成卡片后,每组是一个明确的视觉单元,边界来自色差而非仅靠间距。
+ */
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        content = content,
+    )
 }
 
 @Composable
@@ -607,22 +748,32 @@ private fun ChoiceBlock(
  */
 @Composable
 private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    // 选中态用颜色过渡而非硬切:140ms,关闭动画时瞬时完成
+    val background = animatedSelectionColor(
+        selected = selected,
+        selectedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+        normalColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = Motion.fast(reduceMotion()),
+        label = "chip-content",
+    )
+
+    // 视觉 30dp,外层 48dp 触控区(无障碍最小触控目标)
     Box(
         modifier = Modifier
             .height48()
             .clip(RoundedCornerShape(9.dp))
-            .clickableNoRipple(onClick)
+            .pressableClick(onClick, role = Role.RadioButton)
             .semantics {
-                role = Role.RadioButton
                 this.selected = selected
                 contentDescription = text
             }
             .padding(vertical = 9.dp)
             .clip(RoundedCornerShape(9.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                else MaterialTheme.colorScheme.surfaceContainerHigh
-            )
+            .background(background)
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -630,8 +781,7 @@ private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
             text = text,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
         )
     }
 }
@@ -663,20 +813,31 @@ private fun PaletteDot(
                 },
             contentAlignment = Alignment.Center,
         ) {
+            // 选中时圆变大、内环淡入,两处都走过渡,避免色板在点击瞬间"跳一下"
+            val dotSize by animateDpAsState(
+                targetValue = if (selected) 34.dp else 28.dp,
+                animationSpec = Motion.fast(reduceMotion()),
+                label = "palette-size",
+            )
+            val ringAlpha by animateFloatAsState(
+                targetValue = if (selected) 1f else 0f,
+                animationSpec = Motion.fast(reduceMotion()),
+                label = "palette-ring",
+            )
             Box(
                 modifier = Modifier
-                    .size(if (selected) 34.dp else 28.dp)
+                    .size(dotSize)
                     .clip(CircleShape)
                     .background(if (enabled) palette.seed else palette.seed.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (selected) {
-                    // 同心圆环表示选中,不依赖 ✓ 字形
+                if (ringAlpha > 0f) {
+                    // 同心内环表示选中,不依赖 ✓ 字形
                     Box(
                         modifier = Modifier
                             .size(12.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.9f)),
+                            .background(Color.White.copy(alpha = 0.9f * ringAlpha)),
                     )
                 }
             }

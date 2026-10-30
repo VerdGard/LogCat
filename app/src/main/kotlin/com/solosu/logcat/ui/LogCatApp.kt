@@ -1,7 +1,6 @@
 package com.solosu.logcat.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -39,6 +38,8 @@ import com.solosu.logcat.ui.icons.AppIcons
 import com.solosu.logcat.ui.logcat.LogCatScreen
 import com.solosu.logcat.ui.settings.SettingsScreen
 import com.solosu.logcat.ui.theme.LogCatTheme
+import com.solosu.logcat.ui.theme.Motion
+import com.solosu.logcat.ui.theme.reduceMotion
 
 /** 顶层三页,平级关系,由底部导航切换。 */
 enum class Route(val title: String, val icon: ImageVector) {
@@ -112,11 +113,25 @@ private fun LogCatContent(viewModel: MainViewModel) {
             }
         },
     ) { innerPadding ->
-        // 三页平级切换:只做淡入淡出,不做方向性滑动,避免来回切换时产生"层级"暗示
+        // 三页平级切换:淡入淡出 + 极小位移,不做方向性滑动,避免暗示层级关系。
+        // 位移取 1/24 屏宽:足以让"换了一页"被感知,又不至于像翻页动画那样打断注意力。
+        val reduced = reduceMotion()
         AnimatedContent(
             targetState = current,
             transitionSpec = {
-                fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+                // fadeIn/fadeOut 要 Float 的 spec,slideIn/OutHorizontally 要 IntOffset 的,
+                // 两者不能共用同一个泛型实例
+                val fadeInSpec = Motion.screenIn<Float>(reduced)
+                val fadeOutSpec = Motion.screenOut<Float>(reduced)
+                val slideInSpec = Motion.screenIn<androidx.compose.ui.unit.IntOffset>(reduced)
+                val slideOutSpec = Motion.screenOut<androidx.compose.ui.unit.IntOffset>(reduced)
+                (
+                    fadeIn(fadeInSpec) +
+                        slideInHorizontally(slideInSpec) { width -> width / 24 }
+                    ) togetherWith (
+                    fadeOut(fadeOutSpec) +
+                        slideOutHorizontally(slideOutSpec) { width -> -width / 24 }
+                    )
             },
             label = "route",
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
