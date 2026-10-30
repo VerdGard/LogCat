@@ -1,13 +1,19 @@
+# 版本策略:
+# - AGP 保持 8.13.0。AGP 9.x 为破坏性大版本(内置 Kotlin 支持、buildFeatures.compose
+#   处理方式与部分 android{} DSL 均有变更),升级需要同步改写构建脚本,不属于
+#   「提升引用库版本」的范畴,单独处理。
+# - Gradle wrapper 保持 8.13,与 AGP 8.13 已验证的组合一致。
+# - Kotlin / Compose BOM / AndroidX 均为当前最新稳定版。
 [versions]
 agp = "8.13.0"
-kotlin = "2.2.20"
-coreKtx = "1.17.0"
-lifecycle = "2.9.4"
-activityCompose = "1.10.1"
-composeBom = "2025.09.00"
-coroutines = "1.10.2"
+kotlin = "2.4.21"
+coreKtx = "1.19.1"
+lifecycle = "2.11.0"
+activityCompose = "1.13.0"
+composeBom = "2026.09.00"
+coroutines = "1.11.0"
 junit = "4.13.2"
-material = "1.13.0"
+material = "1.14.0"
 shizuku = "13.1.5"
 
 [plugins]

@@ -118,24 +118,30 @@ fun SettingsScreen(
      * 设置页共 7 个分组、滚动长度约 4 屏,逐屏找某一项的成本不低。
      * 这里在顶栏下挂一条 chip,点哪个就平滑滚到对应分组的 stickyHeader。
      *
-     * 索引必须与实际 item 顺序一致,且「关于」的索引随工具日志条数变化,
-     * 所以不写死数字,由 SettingsSection 统一算出来。
+     * 索引来源分两级:
+     * 1. 首选 layoutInfo 反查 —— 分组 header 用 settingsItemKey(section) 作 key,
+     *    若它当前可见,Compose 已实测出真实索引,直接拿来用,精确且不受改动影响;
+     * 2. 回落 sectionStarts —— 按枚举顺序推算的起始索引。这条路径假设
+     *    "每个分组固定占 1 个 header + 1 个卡片 item",若在某个分组内增删 item
+     *    就会失准(跳偏,但不会崩)。
+     *
+     * 之所以保留回落而不是只靠 key:目标分组很远时不可能是可见项,
+     * 而 Compose 没有「按 key 查索引」的公开 API,只能靠推算 + animateScrollToItem。
      */
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
+    // 每个分组的 header 在 LazyColumn 中的起始索引:
+    // 每组的固定开销 = 1 个 stickyHeader + 1 个卡片 item;
+    // 工具日志组在卡片之后还有最多 40 行日志。
     val sectionStarts = remember(appLogs.size) {
-        buildList {
-            var index = 0
-            SettingsSection.entries.forEach { section ->
-                add(section to index)
-                index += 1                    // stickyHeader
-                index += 1                    // 该组的卡片 item
-                if (section == SettingsSection.APP_LOG && appLogs.isNotEmpty()) {
-                    index += minOf(appLogs.size, 40)
-                }
-            }
-        }.toMap()
+        var index = 0
+        SettingsSection.entries.associateWith { section ->
+            val start = index
+            index += 2 // stickyHeader + card
+            if (section == SettingsSection.APP_LOG) index += minOf(appLogs.size, 40)
+            start
+        }
     }
 
     Scaffold(
@@ -161,8 +167,16 @@ fun SettingsScreen(
 
                 SectionJumpBar(
                     onJump = { section ->
-                        val target = sectionStarts[section] ?: return@SectionJumpBar
-                        scope.launch { listState.animateScrollToItem(target) }
+                        val key = settingsItemKey(section)
+                        // 先看目标是否正好在可见范围内:在的话直接用它已知的索引,
+                        // 比按偏移推算更准(可见项的 index 由 Compose 实测得出)
+                        val visibleIndex = listState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.key == key }
+                            ?.index
+                        val target = visibleIndex ?: sectionStarts[section]
+                        if (target != null) {
+                            scope.launch { listState.animateScrollToItem(target) }
+                        }
                     },
                 )
             }
@@ -174,7 +188,7 @@ fun SettingsScreen(
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             // ---------- 外观 ----------
-            stickyHeader(key = "hdr-appearance") {
+            stickyHeader(key = settingsItemKey(SettingsSection.APPEARANCE)) {
                 GroupHeader("外观", "主题模式、色板、日志字号")
             }
             item(key = "appearance") {
@@ -234,7 +248,7 @@ fun SettingsScreen(
             }
 
             // ---------- 采集 ----------
-            stickyHeader(key = "hdr-capture") {
+            stickyHeader(key = settingsItemKey(SettingsSection.CAPTURE)) {
                 GroupHeader("采集", "权限模式、缓冲区、缓冲行数")
             }
             item(key = "capture") {
@@ -293,7 +307,7 @@ fun SettingsScreen(
             }
 
             // ---------- 显示 ----------
-            stickyHeader(key = "hdr-display") {
+            stickyHeader(key = settingsItemKey(SettingsSection.DISPLAY)) {
                 GroupHeader("显示", "级别、行密度、时间戳、滚动")
             }
             item(key = "display") {
@@ -369,7 +383,7 @@ fun SettingsScreen(
             }
 
             // ---------- 崩溃 ----------
-            stickyHeader(key = "hdr-crash") {
+            stickyHeader(key = settingsItemKey(SettingsSection.CRASH)) {
                 GroupHeader("崩溃", "自动记录 FATAL 与未捕获异常")
             }
             item(key = "crash") {
@@ -398,7 +412,7 @@ fun SettingsScreen(
             }
 
             // ---------- MCP ----------
-            stickyHeader(key = "hdr-mcp") {
+            stickyHeader(key = settingsItemKey(SettingsSection.MCP)) {
                 GroupHeader("MCP 服务", if (mcpStatus.running) mcpStatus.endpoint else "未启动")
             }
             item(key = "mcp") {
@@ -468,7 +482,7 @@ fun SettingsScreen(
             }
 
             // ---------- 工具日志 ----------
-            stickyHeader(key = "hdr-applog") {
+            stickyHeader(key = settingsItemKey(SettingsSection.APP_LOG)) {
                 GroupHeader("工具日志", "LogCat 自身动作记录,排查采集失败时用")
             }
             item(key = "applog-actions") {
@@ -515,7 +529,7 @@ fun SettingsScreen(
             }
 
             // ---------- 关于 ----------
-            stickyHeader(key = "hdr-about") {
+            stickyHeader(key = settingsItemKey(SettingsSection.ABOUT)) {
                 GroupHeader("关于", "版本、ABI、设备信息")
             }
             item(key = "about") {
@@ -623,6 +637,12 @@ private enum class SettingsSection(val label: String) {
     APP_LOG("工具日志"),
     ABOUT("关于"),
 }
+
+/**
+ * 分组 header 在 LazyColumn 里的稳定 key。
+ * 跳转时用它从 layoutInfo 反查索引,保证 key 与 stickyHeader 一一对应。
+ */
+private fun settingsItemKey(section: SettingsSection): String = "hdr-${section.name.lowercase()}"
 
 /** 顶栏下方的一条分组跳转 chip,点击平滑滚动到对应分组。 */
 @Composable
