@@ -1,7 +1,6 @@
 package com.solosu.logcat.ui
 
 import android.app.Application
-import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.solosu.logcat.LogCatApplication
@@ -9,12 +8,12 @@ import com.solosu.logcat.crash.CrashRecord
 import com.solosu.logcat.data.AppLog
 import com.solosu.logcat.data.AppSettings
 import com.solosu.logcat.data.LogRepository
+import com.solosu.logcat.data.ThemeMode
 import com.solosu.logcat.log.LogBuffer
 import com.solosu.logcat.log.LogLevel
 import com.solosu.logcat.shell.ModeAvailability
 import com.solosu.logcat.shell.ShizukuManager
 import com.solosu.logcat.shell.ShellMode
-import com.solosu.logcat.shell.Shells
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,24 +21,32 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 编译期常量:是否 64 位构建,用于设置页展示。 */
+/** 构建与运行环境信息,供设置页展示。 */
 object BuildInfo {
     val is64Bit: Boolean by lazy {
-        android.os.Process.is64Bit() &&
-            android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
+        android.os.Process.is64Bit() && android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
     }
 
     val abis: String get() = android.os.Build.SUPPORTED_ABIS.joinToString(", ")
 }
 
+/** MCP 服务的 UI 侧状态。 */
+data class McpStatus(
+    val running: Boolean = false,
+    val port: Int = 0,
+    val lastError: String? = null,
+) {
+    val endpoint: String get() = if (running) "http://127.0.0.1:$port/" else "—"
+}
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as LogCatApplication
-    private val settingsRepo = app.settings
+
+    val logRepository: LogRepository = app.logRepository
     private val crashStore = app.crashStore
 
-    private val _settings = MutableStateFlow(settingsRepo.load())
-    val settings: StateFlow<AppSettings> = _settings.asStateFlow()
+    val settings: StateFlow<AppSettings> = app.settingsState
 
     private val _availability = MutableStateFlow(ModeAvailability())
     val availability: StateFlow<ModeAvailability> = _availability.asStateFlow()
@@ -47,11 +54,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    val logRepository: LogRepository = LogRepository(
-        logSource = app.logSource,
-        crashStore = crashStore,
-        settingsProvider = { _settings.value },
-    )
+    private val _mcpStatus = MutableStateFlow(McpStatus())
+    val mcpStatus: StateFlow<McpStatus> = _mcpStatus.asStateFlow()
 
     val crashes: StateFlow<List<CrashRecord>> = crashStore.records
     val appLogLines = AppLog.lines
@@ -63,43 +67,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ShizukuManager.state.collect { refreshAvailability() }
         }
         startLogging()
+        // 上次退出时若开启了 MCP,启动时恢复
+        if (app.settingsState.value.mcpEnabled) startMcp()
     }
 
-    // ---------- 日志 ----------
+    // ---------- 日志采集 ----------
 
     fun startLogging() {
-        val target = resolveTargetMode()
-        logRepository.start(target, _settings.value.buffer)
+        logRepository.start(resolveTargetMode(), settings.value.buffer)
     }
 
     fun toggleLogging() {
-        if (logRepository.running) {
-            logRepository.stop()
-        } else {
-            startLogging()
-        }
+        if (logRepository.running) logRepository.stop() else startLogging()
     }
 
     fun clearLogBuffer(clearSystem: Boolean) {
-        val mode = resolveTargetMode()
         if (!clearSystem) {
             logRepository.clearLocal()
             return
         }
-        logRepository.clearRemote(mode, _settings.value.buffer) { result ->
-            result.onFailure { throwable ->
-                _message.value = "清空系统日志失败:${throwable.readable()}"
-            }
+        val mode = resolveTargetMode()
+        logRepository.clearRemote(mode, settings.value.buffer) { result ->
+            result.onFailure { throwable -> postMessage("清空系统日志失败:${throwable.readable()}") }
         }
     }
 
-    fun setLevel(level: LogLevel) = update { it.copy(level = level) }
+    // ---------- 设置:外观 ----------
 
-    fun setBuffer(buffer: LogBuffer) = update { it.copy(buffer = buffer) }
+    fun setThemeMode(mode: ThemeMode) = update { it.copy(themeMode = mode) }
 
-    fun setKeyword(keyword: String) = update { it.copy(keyword = keyword) }
+    fun setMonetEnabled(enabled: Boolean) = update { it.copy(monetEnabled = enabled) }
+
+    fun setPalette(paletteId: String) = update { it.copy(paletteId = paletteId) }
+
+    fun setLogFontSize(size: Int) = update { it.copy(logFontSize = size.coerceIn(10, 20)) }
+
+    // ---------- 设置:读取 ----------
+
+    fun setMode(mode: ShellMode) {
+        val (effective, downgraded) = availability.value.fallback(mode)
+        if (downgraded) postMessage("${mode.label} 当前不可用(${unavailableReason(mode)}),已回退到默认模式")
+        update(restart = true) { it.copy(mode = effective) }
+    }
+
+    fun setBuffer(buffer: LogBuffer) = update(restart = true) { it.copy(buffer = buffer) }
 
     fun setMaxLines(lines: Int) = update { it.copy(maxLines = lines.coerceIn(500, 20_000)) }
+
+    // ---------- 设置:显示 ----------
+
+    fun setLevel(level: LogLevel) = update { it.copy(level = level) }
+
+    fun setKeyword(keyword: String) = update { it.copy(keyword = keyword) }
 
     fun setWrapLines(wrap: Boolean) = update { it.copy(wrapLines = wrap) }
 
@@ -109,22 +128,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAutoScroll(enabled: Boolean) = update { it.copy(autoScroll = enabled) }
 
-    fun setMode(mode: ShellMode) {
-        val (effective, downgraded) = _availability.value.fallback(mode)
-        if (downgraded) {
-            _message.value = "${mode.label} 当前不可用(${unavailableReason(mode)}),已回退到默认模式"
-        }
-        update(restart = true) { it.copy(mode = effective) }
+    // ---------- 设置:崩溃 ----------
+
+    fun setCaptureCrashes(enabled: Boolean) = update { it.copy(captureCrashes = enabled) }
+
+    // ---------- 设置:MCP ----------
+
+    fun setMcpEnabled(enabled: Boolean) {
+        update { it.copy(mcpEnabled = enabled) }
+        if (enabled) startMcp() else stopMcp()
     }
+
+    fun setMcpPort(port: Int) {
+        val clamped = port.coerceIn(1024, 65535)
+        val wasRunning = app.mcpServer.isRunning
+        update { it.copy(mcpPort = clamped) }
+        if (wasRunning) {
+            stopMcp()
+            startMcp()
+        }
+    }
+
+    fun setMcpToken(token: String) = update { it.copy(mcpToken = token) }
+
+    fun regenerateMcpToken() {
+        val token = buildString {
+            repeat(32) { append("0123456789abcdef".random()) }
+        }
+        update { it.copy(mcpToken = token) }
+        postMessage("已生成新的访问令牌")
+    }
+
+    fun startMcp() {
+        val settings = settings.value
+        val result = app.mcpServer.start(settings.mcpPort)
+        result.onSuccess {
+            _mcpStatus.value = McpStatus(
+                running = true,
+                port = app.mcpServer.boundPort,
+                lastError = null,
+            )
+            postMessage("MCP 已启动:${_mcpStatus.value.endpoint}")
+        }.onFailure { throwable ->
+            _mcpStatus.value = McpStatus(running = false, port = 0, lastError = throwable.readable())
+            postMessage("MCP 启动失败:${throwable.readable()}")
+        }
+    }
+
+    fun stopMcp() {
+        app.mcpServer.stop()
+        _mcpStatus.value = McpStatus(running = false, port = 0, lastError = null)
+    }
+
+    fun toggleMcp() {
+        if (app.mcpServer.isRunning) {
+            setMcpEnabled(false)
+        } else {
+            setMcpEnabled(true)
+        }
+    }
+
+    // ---------- 权限状态 ----------
 
     fun requestShizukuPermission() {
         when {
-            !_availability.value.shizukuInstalled -> _message.value = "未检测到 Shizuku,请先安装 Shizuku 或使用 Sui"
-            !ShizukuManager.isBinderAlive() -> _message.value = "Shizuku 服务未运行,请在 Shizuku 管理器中启动服务"
-            ShizukuManager.hasPermission() -> _message.value = "Shizuku 权限已授予"
+            !availability.value.shizukuInstalled -> postMessage("未检测到 Shizuku,请先安装 Shizuku 或使用 Sui")
+            !ShizukuManager.isBinderAlive() -> postMessage("Shizuku 服务未运行,请在 Shizuku 管理器中启动服务")
+            ShizukuManager.hasPermission() -> postMessage("Shizuku 权限已授予")
             else -> {
                 ShizukuManager.requestPermission()
-                _message.value = "已发起 Shizuku 授权请求"
+                postMessage("已发起 Shizuku 授权请求")
             }
         }
     }
@@ -132,32 +205,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshModes() {
         ShizukuManager.refresh()
         refreshAvailability()
-        _message.value = buildString {
-            append("Root:").append(if (_availability.value.root) "可用" else "未检测到")
-            append(";Shizuku:").append(
-                when {
-                    !_availability.value.shizukuInstalled -> "未安装"
-                    !ShizukuManager.isBinderAlive() -> "服务未运行"
-                    _availability.value.shizukuUsable -> "已授权"
-                    else -> "未授权"
-                }
-            )
-        }
+        postMessage(
+            buildString {
+                append("Root:").append(if (availability.value.root) "可用" else "未检测到")
+                append(";Shizuku:").append(
+                    when {
+                        !availability.value.shizukuInstalled -> "未安装"
+                        !ShizukuManager.isBinderAlive() -> "服务未运行"
+                        availability.value.shizukuUsable -> "已授权"
+                        else -> "未授权"
+                    }
+                )
+            }
+        )
     }
 
     private fun resolveTargetMode(): ShellMode {
-        val requested = _settings.value.mode
-        val (effective, downgraded) = _availability.value.fallback(requested)
-        if (downgraded) {
-            _message.value = "${requested.label} 不可用(${unavailableReason(requested)}),本次以默认模式读取"
-        }
+        val requested = settings.value.mode
+        val (effective, downgraded) = availability.value.fallback(requested)
+        if (downgraded) postMessage("${requested.label} 不可用(${unavailableReason(requested)}),本次以默认模式读取")
         return effective
     }
 
     private fun unavailableReason(mode: ShellMode): String = when (mode) {
         ShellMode.ROOT -> "未检测到 su"
         ShellMode.SHIZUKU -> when {
-            !_availability.value.shizukuInstalled -> "Shizuku 未安装"
+            !availability.value.shizukuInstalled -> "Shizuku 未安装"
             !ShizukuManager.isBinderAlive() -> "Shizuku 服务未运行"
             else -> "未授予权限"
         }
@@ -166,13 +239,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshAvailability() {
         viewModelScope.launch(Dispatchers.IO) {
-            val context: Context = getApplication<Application>()
-            // su 只查几个固定路径,但仍在 IO 线程执行,避免主线程做文件 stat
-            val snapshot = ModeAvailability(
-                root = Shells.hasRootBinary(),
-                shizukuInstalled = ShizukuManager.isInstalled(context),
-                shizukuUsable = ShizukuManager.hasPermission(),
-            )
+            val snapshot = app.modeAvailability()
             withContext(Dispatchers.Main) { _availability.value = snapshot }
         }
     }
@@ -186,11 +253,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportCrashes(onReady: (String) -> Unit, record: CrashRecord?) {
         viewModelScope.launch {
             val text = withContext(Dispatchers.Default) {
-                if (record != null) {
-                    record.toText()
-                } else {
-                    crashes.value.joinToString("\n\n") { it.toText() }
-                }
+                if (record != null) record.toText()
+                else crashes.value.joinToString("\n\n") { it.toText() }
             }
             onReady(text)
         }
@@ -208,29 +272,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _message.value = text
     }
 
-    // ---------- 绑定生命周期 ----------
+    // ---------- 生命周期 ----------
 
     fun onResume() {
         if (!logRepository.running) startLogging()
     }
 
     override fun onCleared() {
-        logRepository.stop()
+        // LogRepository 属于 Application,不随 ViewModel 销毁;仅在本进程退出时随进程结束
         super.onCleared()
     }
 
     private fun update(restart: Boolean = false, transform: (AppSettings) -> AppSettings) {
-        val previous = _settings.value
-        val next = transform(previous)
+        val previous = app.updateSettings(transform)
+        val next = app.settingsState.value
         if (next == previous) return
-        _settings.value = next
-        settingsRepo.save(next)
 
         if (next.maxLines != previous.maxLines) logRepository.reapplyLimit(next.maxLines)
 
-        val needRestart = restart ||
-            next.mode != previous.mode ||
-            next.buffer != previous.buffer
+        val needRestart = restart || next.mode != previous.mode || next.buffer != previous.buffer
         if (needRestart && logRepository.running) {
             logRepository.start(resolveTargetMode(), next.buffer)
         }

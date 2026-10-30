@@ -49,8 +49,10 @@ class LogRepository(
     var droppedLines by mutableStateOf(0)
         private set
 
+    var activeBuffer by mutableStateOf(LogBuffer.ALL)
+        private set
+
     private var streamJob: Job? = null
-    private var activeBuffer = LogBuffer.ALL
 
     /** 全局自增序号:日志流重启后解析器的 seq 会从 1 重新计数,这里统一重编号以保证 LazyColumn key 唯一。 */
     private var seqCounter = 0L
@@ -122,6 +124,11 @@ class LogRepository(
         }
     }
 
+    /** 供外部(MCP)在设置变化后按需重启。 */
+    fun restartIfRunning(mode: ShellMode, buffer: LogBuffer) {
+        if (running) start(mode, buffer)
+    }
+
     fun reapplyLimit(maxLines: Int) {
         val overflow = entries.size - maxLines
         if (overflow > 0) {
@@ -129,6 +136,9 @@ class LogRepository(
             droppedLines += overflow
         }
     }
+
+    /** 当前缓冲快照(供 MCP / 导出使用,避免外部直接触碰 SnapshotStateList)。 */
+    fun snapshot(): List<LogEntry> = entries.toList()
 
     /** 导出当前可见缓冲为文本。 */
     fun exportVisible(visible: List<LogEntry>): String =
@@ -146,6 +156,7 @@ class LogRepository(
 
     /** FATAL 级别或 FATAL EXCEPTION 段落 → 存档为崩溃记录。 */
     private fun detectCrash(entry: LogEntry) {
+        if (!settingsProvider().captureCrashes) return
         val isFatal = entry.level == LogLevel.FATAL || entry.message.contains("FATAL EXCEPTION")
         if (!isFatal) return
         val record = CrashStore.newSystemRecord(

@@ -142,6 +142,52 @@ object AppIcons {
         }
     }
 
+    val Theme: ImageVector by lazy {
+        stroke("Theme") {
+            moveTo(12f, 3f); lineTo(20f, 9f); lineTo(20f, 19f); lineTo(4f, 19f); lineTo(4f, 9f); close()
+            moveTo(9f, 19f); lineTo(9f, 12f); lineTo(15f, 12f); lineTo(15f, 19f)
+        }
+    }
+
+    val Link: ImageVector by lazy {
+        stroke("Link") {
+            moveTo(10f, 13f); lineTo(14f, 9f)
+            moveTo(8.5f, 9.5f); lineTo(6.5f, 11.5f); lineTo(6.5f, 11.5f)
+            moveTo(8f, 16f); lineTo(6f, 18f); lineTo(6f, 12f)
+            moveTo(16f, 8f); lineTo(18f, 6f); lineTo(18f, 12f)
+            moveTo(9f, 15f); lineTo(15f, 9f); lineTo(15f, 15f); lineTo(9f, 15f); close()
+        }
+    }
+
+    val Wrap: ImageVector by lazy {
+        stroke("Wrap") {
+            moveTo(3f, 6f); lineTo(21f, 6f)
+            moveTo(3f, 12f); lineTo(15f, 12f); lineTo(18f, 12f)
+            moveTo(18f, 12f); lineTo(18f, 16f); lineTo(15f, 16f)
+            moveTo(3f, 18f); lineTo(12f, 18f)
+        }
+    }
+
+    val ArrowDown: ImageVector by lazy {
+        stroke("ArrowDown") {
+            moveTo(12f, 4f); lineTo(12f, 20f)
+            moveTo(6f, 14f); lineTo(12f, 20f); lineTo(18f, 14f)
+        }
+    }
+
+    val Filter: ImageVector by lazy {
+        stroke("Filter") {
+            moveTo(3f, 5f); lineTo(21f, 5f); lineTo(14f, 13f); lineTo(14f, 20f); lineTo(10f, 18f); lineTo(10f, 13f); close()
+        }
+    }
+
+    val Expand: ImageVector by lazy {
+        stroke("Expand") {
+            moveTo(4f, 9f); lineTo(12f, 3f); lineTo(20f, 9f)
+            moveTo(4f, 15f); lineTo(12f, 21f); lineTo(20f, 15f)
+        }
+    }
+
     private fun stroke(name: String, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(
             name = name,

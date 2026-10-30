@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- MCP 服务需要监听本地 socket -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Shizuku 授权所需的权限(由 Shizuku 管理器授予) -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
