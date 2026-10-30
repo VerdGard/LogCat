@@ -4,24 +4,21 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,10 +26,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -44,7 +40,7 @@ import com.solosu.logcat.ui.logcat.LogCatScreen
 import com.solosu.logcat.ui.settings.SettingsScreen
 import com.solosu.logcat.ui.theme.LogCatTheme
 
-/** 顶层页面。日志是主页面,崩溃与设置作为可侧滑进入的覆盖页。 */
+/** 顶层三页,平级关系,由底部导航切换。 */
 enum class Route(val title: String, val icon: ImageVector) {
     LOGS("日志", AppIcons.Logs),
     CRASH("崩溃", AppIcons.Crash),
@@ -66,7 +62,6 @@ fun LogCatApp(viewModel: MainViewModel = viewModel()) {
 
 @Composable
 private fun LogCatContent(viewModel: MainViewModel) {
-    // 日志为默认页;其余页面从右侧滑入并覆盖整个屏幕
     var route by rememberSaveable { mutableStateOf(Route.LOGS.ordinal) }
     val current = Route.entries[route]
     val snackbarHostState = remember { SnackbarHostState() }
@@ -83,70 +78,54 @@ private fun LogCatContent(viewModel: MainViewModel) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            AnimatedContent(
-                targetState = current,
-                transitionSpec = {
-                    // 回到日志页用反向动画,进入其他页从右滑入
-                    val forward = targetState != Route.LOGS
-                    val direction = if (forward) 1 else -1
-                    (
-                        slideInHorizontally(tween(240)) { width -> width * direction / 4 } +
-                            fadeIn(tween(200))
-                        ) togetherWith (
-                        slideOutHorizontally(tween(200)) { width -> -width * direction / 6 } +
-                            fadeOut(tween(200))
-                        )
-                },
-                label = "route",
-            ) { target ->
-                when (target) {
-                    Route.LOGS -> LogCatScreen(
-                        viewModel = viewModel,
-                        onOpenCrash = { route = Route.CRASH.ordinal },
-                        onOpenSettings = { route = Route.SETTINGS.ordinal },
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Route.entries.forEachIndexed { index, item ->
+                    val selected = route == index
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = { if (!selected) route = index },
+                        icon = {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.title,
+                                modifier = Modifier.size(21.dp),
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = item.title,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                     )
-
-                    Route.CRASH -> CrashScreen(viewModel = viewModel, onBack = { route = Route.LOGS.ordinal })
-
-                    Route.SETTINGS -> SettingsScreen(viewModel = viewModel, onBack = { route = Route.LOGS.ordinal })
                 }
             }
+        },
+    ) { innerPadding ->
+        // 三页平级切换:只做淡入淡出,不做方向性滑动,避免来回切换时产生"层级"暗示
+        AnimatedContent(
+            targetState = current,
+            transitionSpec = {
+                fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+            },
+            label = "route",
+            modifier = Modifier.padding(innerPadding).fillMaxSize(),
+        ) { target ->
+            when (target) {
+                Route.LOGS -> LogCatScreen(viewModel = viewModel)
+                Route.CRASH -> CrashScreen(viewModel = viewModel)
+                Route.SETTINGS -> SettingsScreen(viewModel = viewModel)
+            }
         }
-    }
-}
-
-/**
- * 首页左上角的入口按钮组:用于从日志页跳到崩溃或设置。
- * 独立成 composable 以便 LogCatScreen 的 TopBar 复用。
- */
-@Composable
-fun RouteEntryButtons(
-    onOpenCrash: () -> Unit,
-    onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        RouteChip(AppIcons.Crash, "崩溃", onOpenCrash)
-        RouteChip(AppIcons.Settings, "设置", onOpenSettings)
-    }
-}
-
-@Composable
-private fun RouteChip(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            modifier = Modifier.size(19.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

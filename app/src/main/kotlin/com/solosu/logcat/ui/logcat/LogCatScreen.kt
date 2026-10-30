@@ -85,7 +85,6 @@ import com.solosu.logcat.log.LogLevel
 import com.solosu.logcat.log.rawLine
 import com.solosu.logcat.shell.ShellMode
 import com.solosu.logcat.ui.MainViewModel
-import com.solosu.logcat.ui.RouteEntryButtons
 import com.solosu.logcat.ui.components.EmptyState
 import com.solosu.logcat.ui.components.Tag
 import com.solosu.logcat.ui.components.defaultExportName
@@ -98,8 +97,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun LogCatScreen(
     viewModel: MainViewModel,
-    onOpenCrash: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -224,12 +221,6 @@ fun LogCatScreen(
                             )
                         }
                     }
-                },
-                navigationIcon = {
-                    RouteEntryButtons(
-                        onOpenCrash = onOpenCrash,
-                        onOpenSettings = onOpenSettings,
-                    )
                 },
                 actions = {
                     IconButton(onClick = {

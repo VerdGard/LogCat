@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 单屏为主:日志页为默认页,崩溃与设置从顶栏入口滑入覆盖,底部空间全部留给日志
+- 底部导航:日志 / 崩溃 / 设置三页平级切换(淡入淡出,无层级暗示)
 - 三种日志读取模式
   - **默认模式**:无需授权,通过 `--pid <自身进程>` 仅读取本应用日志
   - **Shizuku**:基于 Shizuku / Sui 授权,以 shell 身份读取整机日志(`dev.rikka.shizuku`)
@@ -52,7 +52,7 @@ app/src/main/kotlin/com/solosu/logcat/
 ├── shell/                     三种模式的进程创建、Shizuku 授权封装
 ├── crash/                     崩溃记录与全局异常捕获
 └── ui/
-    ├── LogCatApp.kt           顶层路由(日志为主页,崩溃/设置滑入覆盖)
+    ├── LogCatApp.kt           顶层路由与底部导航
     ├── logcat/                日志页
     ├── crash/                 崩溃页
     ├── settings/              设置页

@@ -2,7 +2,6 @@
 
 package com.solosu.logcat.ui.settings
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,7 +25,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -74,7 +72,6 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -84,8 +81,6 @@ fun SettingsScreen(
     val copyText = rememberTextClipboard()
 
     var confirmClearCrashes by remember { mutableStateOf(false) }
-
-    BackHandler(onBack = onBack)
 
     if (confirmClearCrashes) {
         AlertDialog(
@@ -112,11 +107,6 @@ fun SettingsScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(AppIcons.ArrowBack, contentDescription = "返回日志")
-                    }
-                },
                 title = {
                     Column {
                         Text("设置", fontWeight = FontWeight.SemiBold)

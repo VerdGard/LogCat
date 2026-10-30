@@ -66,7 +66,6 @@ import com.solosu.logcat.ui.icons.AppIcons
 @Composable
 fun CrashScreen(
     viewModel: MainViewModel,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val crashes by viewModel.crashes.collectAsStateWithLifecycle()
@@ -75,9 +74,9 @@ fun CrashScreen(
     var confirmClear by remember { mutableStateOf(false) }
     val selected = crashes.firstOrNull { it.id == selectedId }
 
-    // 返回键:详情页先退回列表,列表页才退回日志页(此前返回键会直接退出 App)
-    BackHandler(enabled = true) {
-        if (selected != null) selectedId = null else onBack()
+    // 返回键:仅在详情页拦截,先退回列表;列表页不再拦截,交给系统默认行为
+    BackHandler(enabled = selected != null) {
+        selectedId = null
     }
 
     if (confirmClear) {
@@ -131,11 +130,6 @@ fun CrashScreen(
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                         ),
-                        navigationIcon = {
-                            IconButton(onClick = onBack) {
-                                Icon(AppIcons.ArrowBack, contentDescription = "返回日志")
-                            }
-                        },
                         title = {
                             Column {
                                 Text("崩溃", fontWeight = FontWeight.SemiBold)
